@@ -82,6 +82,8 @@ bool SDLAppBase::init() {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
         return false;
     }
+
+    SDL_StartTextInput(window);
     
     return true;
 }
@@ -134,6 +136,7 @@ void SDLAppBase::run() {
 
 
 void SDLAppBase::cleanup() {
+    SDL_StopTextInput(window);
     if (largeFont) {
         TTF_CloseFont(largeFont);
         largeFont = nullptr;

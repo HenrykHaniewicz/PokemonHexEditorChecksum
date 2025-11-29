@@ -7,6 +7,56 @@
 #include <cstring>
 #include <cstdlib>
 
+void printUsage(const char* progName) {
+    std::cerr << "GBA/GB Hex Editor" << std::endl;
+    std::cerr << "Usage: " << progName << " <filename> [-g grouping] [-e encoding] [-r address value ...] [-f replacefile] [-o]" << std::endl;
+    std::cerr << "\nOptions:" << std::endl;
+    std::cerr << "  -g grouping     Group bytes (1, 2, 4, or 8). Default: 1" << std::endl;
+    std::cerr << "  -e encoding     Text encoding for decoded display:" << std::endl;
+    std::cerr << "                    E1 = English Gen 1 (Pokemon Red/Blue/Yellow)" << std::endl;
+    std::cerr << "                    E2 = English Gen 2 (Pokemon Gold/Silver/Crystal)" << std::endl;
+    std::cerr << "                    E3 = English Gen 3 (Pokemon Fire Red/Leaf Green/Ruby/Sapphire/Emerald)" << std::endl;
+    std::cerr << "                    J1 = Japanese Gen 1" << std::endl;
+    std::cerr << "                    J2 = Japanese Gen 2" << std::endl;
+    std::cerr << "                    J3 = Japanese Gen 3" << std::endl;
+    std::cerr << "                    Default: ASCII" << std::endl;
+    std::cerr << "  -r address value  Replace bytes at address with value (batch mode)" << std::endl;
+    std::cerr << "                    Can specify multiple address-value pairs" << std::endl;
+    std::cerr << "                    Addresses can have 0x prefix (optional)" << std::endl;
+    std::cerr << "                    Values can be multiple bytes (e.g., FFD3A1)" << std::endl;
+    std::cerr << "  -f filename     Read replacements from file (applied before -r)" << std::endl;
+    std::cerr << "                    File format: <address> <values> (one per line)" << std::endl;
+    std::cerr << "                    Lines starting with # are comments" << std::endl;
+    std::cerr << "  -o              Overwrite mode: save to original file instead of edited_files/" << std::endl;
+    std::cerr << "\nExamples:" << std::endl;
+    std::cerr << "  " << progName << " game.gb" << std::endl;
+    std::cerr << "  " << progName << " pokemon_red.gb -e E1" << std::endl;
+    std::cerr << "  " << progName << " pokemon_gold.gb -e E2 -g 4" << std::endl;
+    std::cerr << "  " << progName << " pokemon_green.gb -e J1" << std::endl;
+    std::cerr << "  " << progName << " game.gba -r FF01 FF DC03 40" << std::endl;
+    std::cerr << "  " << progName << " game.gba -g 2 -r 0x100 FFD3A1" << std::endl;
+    std::cerr << "  " << progName << " game.gba -f replacements.txt" << std::endl;
+    std::cerr << "  " << progName << " game.gba -f replacements.txt -r 0x100 FF -o" << std::endl;
+    std::cerr << "\nInteractive controls:" << std::endl;
+    std::cerr << "  Click hex      - Select byte for editing" << std::endl;
+    std::cerr << "  Type hex       - Edit selected byte (auto-advance)" << std::endl;
+    std::cerr << "  Arrow keys     - Navigate bytes" << std::endl;
+    std::cerr << "  Tab/Shift+Tab  - Next/previous byte" << std::endl;
+    std::cerr << "  Cmd/Ctrl+S     - Save to edited_files/" << std::endl;
+    std::cerr << "  Cmd/Ctrl+C     - Copy selected bytes" << std::endl;
+    std::cerr << "  Cmd/Ctrl+V     - Paste hex values" << std::endl;
+    std::cerr << "  Cmd/Ctrl+Z     - Undo last byte edit" << std::endl;
+    std::cerr << "  G              - Go to address" << std::endl;
+    std::cerr << "  PgUp/PgDn      - Scroll by page" << std::endl;
+    std::cerr << "  Ctrl+Home/End  - Go to start/end" << std::endl;
+    std::cerr << "  Cmd/Ctrl++     - Zoom in" << std::endl;
+    std::cerr << "  Cmd/Ctrl+-     - Zoom out" << std::endl;
+    std::cerr << "  Cmd/Ctrl+0     - Reset zoom to 100%" << std::endl;
+    std::cerr << "  Cmd/Ctrl+Scroll- Zoom with mouse wheel" << std::endl;
+    std::cerr << "  Esc            - Deselect / Quit" << std::endl;
+    std::cerr << "  Q              - Quit (when not editing)" << std::endl;
+}
+
 bool fileExists(const std::string& path) {
     struct stat buffer;
     return (stat(path.c_str(), &buffer) == 0);
@@ -117,53 +167,10 @@ bool parseReplacementFile(const std::string& filepath,
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::cerr << "GBA/GB Hex Editor" << std::endl;
-        std::cerr << "Usage: " << argv[0] << " <filename> [-g grouping] [-e encoding] [-r address value ...] [-f replacefile] [-o]" << std::endl;
-        std::cerr << "\nOptions:" << std::endl;
-        std::cerr << "  -g grouping     Group bytes (1, 2, 4, or 8). Default: 1" << std::endl;
-        std::cerr << "  -e encoding     Text encoding for decoded display:" << std::endl;
-        std::cerr << "                    E1 = English Gen 1 (Pokemon Red/Blue/Yellow)" << std::endl;
-        std::cerr << "                    E2 = English Gen 2 (Pokemon Gold/Silver/Crystal)" << std::endl;
-        std::cerr << "                    E3 = English Gen 3 (Pokemon Fire Red/Leaf Green/Ruby/Sapphire/Emerald)" << std::endl;
-        std::cerr << "                    J1 = Japanese Gen 1" << std::endl;
-        std::cerr << "                    J2 = Japanese Gen 2" << std::endl;
-        std::cerr << "                    J3 = Japanese Gen 3" << std::endl;
-        std::cerr << "                    Default: ASCII" << std::endl;
-        std::cerr << "  -r address value  Replace bytes at address with value (batch mode)" << std::endl;
-        std::cerr << "                    Can specify multiple address-value pairs" << std::endl;
-        std::cerr << "                    Addresses can have 0x prefix (optional)" << std::endl;
-        std::cerr << "                    Values can be multiple bytes (e.g., FFD3A1)" << std::endl;
-        std::cerr << "  -f filename     Read replacements from file (applied before -r)" << std::endl;
-        std::cerr << "                    File format: <address> <values> (one per line)" << std::endl;
-        std::cerr << "                    Lines starting with # are comments" << std::endl;
-        std::cerr << "  -o              Overwrite mode: save to original file instead of edited_files/" << std::endl;
-        std::cerr << "\nExamples:" << std::endl;
-        std::cerr << "  " << argv[0] << " game.gb" << std::endl;
-        std::cerr << "  " << argv[0] << " pokemon_red.gb -e E1" << std::endl;
-        std::cerr << "  " << argv[0] << " pokemon_gold.gb -e E2 -g 4" << std::endl;
-        std::cerr << "  " << argv[0] << " pokemon_green.gb -e J1" << std::endl;
-        std::cerr << "  " << argv[0] << " game.gba -r FF01 FF DC03 40" << std::endl;
-        std::cerr << "  " << argv[0] << " game.gba -g 2 -r 0x100 FFD3A1" << std::endl;
-        std::cerr << "  " << argv[0] << " game.gba -f replacements.txt" << std::endl;
-        std::cerr << "  " << argv[0] << " game.gba -f replacements.txt -r 0x100 FF -o" << std::endl;
-        std::cerr << "\nInteractive controls:" << std::endl;
-        std::cerr << "  Click hex      - Select byte for editing" << std::endl;
-        std::cerr << "  Type hex       - Edit selected byte (auto-advance)" << std::endl;
-        std::cerr << "  Arrow keys     - Navigate bytes" << std::endl;
-        std::cerr << "  Tab/Shift+Tab  - Next/previous byte" << std::endl;
-        std::cerr << "  Cmd/Ctrl+S     - Save to edited_files/" << std::endl;
-        std::cerr << "  Cmd/Ctrl+C     - Copy selected bytes" << std::endl;
-        std::cerr << "  Cmd/Ctrl+V     - Paste hex values" << std::endl;
-        std::cerr << "  Cmd/Ctrl+Z     - Undo last byte edit" << std::endl;
-        std::cerr << "  G              - Go to address" << std::endl;
-        std::cerr << "  PgUp/PgDn      - Scroll by page" << std::endl;
-        std::cerr << "  Ctrl+Home/End  - Go to start/end" << std::endl;
-        std::cerr << "  Cmd/Ctrl++     - Zoom in" << std::endl;
-        std::cerr << "  Cmd/Ctrl+-     - Zoom out" << std::endl;
-        std::cerr << "  Cmd/Ctrl+0     - Reset zoom to 100%" << std::endl;
-        std::cerr << "  Cmd/Ctrl+Scroll- Zoom with mouse wheel" << std::endl;
-        std::cerr << "  Esc            - Deselect / Quit" << std::endl;
-        std::cerr << "  Q              - Quit (when not editing)" << std::endl;
+        printUsage(argv[0]);
+        return 1;
+    } else if (argc >= 2 && strcmp(argv[1], "-h") == 0) {
+        printUsage(argv[0]);
         return 1;
     }
     
