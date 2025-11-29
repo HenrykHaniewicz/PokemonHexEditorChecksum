@@ -42,37 +42,42 @@ bool SDLAppBase::loadFonts(int normalSize, int largeSize) {
         return false;
     }
     
-    TTF_SizeText(font, "W", &charWidth, &charHeight);
+    // SDL3_ttf equivalent of TTF_SizeText, length 0 => null-terminated string
+    TTF_GetStringSize(font, "W", 0, &charWidth, &charHeight);
     return true;
 }
 
+
 bool SDLAppBase::init() {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    // SDL_Init now returns bool: true on success, false on failure (SDL3)
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "SDL init failed: " << SDL_GetError() << std::endl;
         return false;
     }
     
-    if (TTF_Init() < 0) {
-        std::cerr << "TTF init failed: " << TTF_GetError() << std::endl;
+    // TTF_Init also returns bool in SDL3_ttf
+    if (!TTF_Init()) {
+        std::cerr << "TTF init failed: " << SDL_GetError() << std::endl;
         return false;
     }
     
     if (!loadFonts()) {
         return false;
     }
-    
+
+    // SDL_CreateWindow no longer takes x/y positions, and SDL_WINDOW_SHOWN is gone
     window = SDL_CreateWindow(windowTitle.c_str(),
-                              SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED,
-                              windowWidth, windowHeight,
-                              SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+                              windowWidth,
+                              windowHeight,
+                              SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
         return false;
     }
-    
-    renderer = SDL_CreateRenderer(window, -1, 
-                                  SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
+    // SDL_CreateRenderer now takes (window, const char* name)
+    // pass nullptr to let SDL choose a driver, flags parameter is gone
+    renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
         return false;
@@ -80,6 +85,7 @@ bool SDLAppBase::init() {
     
     return true;
 }
+
 
 void SDLAppBase::run() {
     running = true;
@@ -93,20 +99,22 @@ void SDLAppBase::run() {
         lastTime = currentTime;
         
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT) {
+            if (event.type == SDL_EVENT_QUIT) {
                 running = false;
                 continue;
             }
-            
-            if (event.type == SDL_WINDOWEVENT) {
-                if (event.window.event == SDL_WINDOWEVENT_RESIZED ||
-                    event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                    windowWidth = event.window.data1;
-                    windowHeight = event.window.data2;
-                    onResize(windowWidth, windowHeight);
-                } else if (event.window.event == SDL_WINDOWEVENT_EXPOSED) {
-                    needsRedraw = true;
-                }
+
+            // SDL_WINDOWEVENT* moved to top-level event types in SDL3
+            if (event.type == SDL_EVENT_WINDOW_RESIZED ||
+                event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+                windowWidth = event.window.data1;
+                windowHeight = event.window.data2;
+                onResize(windowWidth, windowHeight);
+                continue;
+            }
+
+            if (event.type == SDL_EVENT_WINDOW_EXPOSED) {
+                needsRedraw = true;
                 continue;
             }
             
@@ -123,6 +131,7 @@ void SDLAppBase::run() {
         }
     }
 }
+
 
 void SDLAppBase::cleanup() {
     if (largeFont) {
@@ -169,47 +178,60 @@ void SDLAppBase::renderText(const std::string& text, int x, int y, SDL_Color col
     if (!f) f = font;
     if (!targetRenderer) targetRenderer = renderer;
     
-    SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), color);
+    SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), text.size(), color);
     if (!surface) return;
     
     SDL_Texture* texture = SDL_CreateTextureFromSurface(targetRenderer, surface);
     if (!texture) {
-        SDL_FreeSurface(surface);
+        SDL_DestroySurface(surface);
         return;
     }
 
-    SDL_Rect rect = {x, y, surface->w, surface->h};
-    SDL_RenderCopy(targetRenderer, texture, nullptr, &rect);
+    SDL_FRect dst{
+        static_cast<float>(x),
+        static_cast<float>(y),
+        static_cast<float>(surface->w),
+        static_cast<float>(surface->h)
+    };
+
+    SDL_RenderTexture(targetRenderer, texture, nullptr, &dst);
     SDL_DestroyTexture(texture);
-    SDL_FreeSurface(surface);
+    SDL_DestroySurface(surface);
 }
 
-void SDLAppBase::renderTextScaled(const std::string& text, int x, int y, SDL_Color color, float scale,
-                                  TTF_Font* f, SDL_Renderer* targetRenderer) {
+void SDLAppBase::renderTextScaled(const std::string& text, int x, int y, SDL_Color color,
+                                  float scale, TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!f) f = font;
     if (!targetRenderer) targetRenderer = renderer;
     
-    SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), color);
+    SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), text.size(), color);
     if (!surface) return;
     
     SDL_Texture* texture = SDL_CreateTextureFromSurface(targetRenderer, surface);
     if (!texture) {
-        SDL_FreeSurface(surface);
+        SDL_DestroySurface(surface);
         return;
     }
     
-    SDL_Rect destRect = {x, y, (int)(surface->w * scale), (int)(surface->h * scale)};
-    SDL_RenderCopy(targetRenderer, texture, NULL, &destRect);
+    SDL_FRect destRect{
+        static_cast<float>(x),
+        static_cast<float>(y),
+        surface->w * scale,
+        surface->h * scale
+    };
+
+    SDL_RenderTexture(targetRenderer, texture, nullptr, &destRect);
     SDL_DestroyTexture(texture);
-    SDL_FreeSurface(surface);
+    SDL_DestroySurface(surface);
 }
+
 
 void SDLAppBase::renderCenteredText(const std::string& text, int y, SDL_Color color, 
                                    TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (!f) f = font;
     int w, h;
-    TTF_SizeText(f, text.c_str(), &w, &h);
+    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
     renderText(text, (windowWidth - w) / 2, y, color, f, targetRenderer);
 }
 
@@ -217,13 +239,13 @@ void SDLAppBase::renderCenteredTextAt(const std::string& text, int x, int y, SDL
                                      TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (!f) f = font;
     int w, h;
-    TTF_SizeText(f, text.c_str(), &w, &h);
+    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
     renderText(text, x - w / 2, y - h / 2, color, f, targetRenderer);
 }
 
 void SDLAppBase::getTextSize(const std::string& text, int& w, int& h, TTF_Font* f) {
     if (!f) f = font;
-    TTF_SizeText(f, text.c_str(), &w, &h);
+    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
 }
 
 void SDLAppBase::renderButton(const SDL_Rect& rect, const std::string& text, bool hovered,
@@ -245,22 +267,41 @@ void SDLAppBase::renderFilledRect(const SDL_Rect& rect, SDL_Color color,
                                  SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
-    SDL_RenderFillRect(targetRenderer, &rect);
+
+    SDL_FRect r{
+        static_cast<float>(rect.x),
+        static_cast<float>(rect.y),
+        static_cast<float>(rect.w),
+        static_cast<float>(rect.h)
+    };
+    SDL_RenderFillRect(targetRenderer, &r);
 }
 
 void SDLAppBase::renderOutlineRect(const SDL_Rect& rect, SDL_Color color,
                                   SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
-    SDL_RenderDrawRect(targetRenderer, &rect);
+
+    SDL_FRect r{
+        static_cast<float>(rect.x),
+        static_cast<float>(rect.y),
+        static_cast<float>(rect.w),
+        static_cast<float>(rect.h)
+    };
+    SDL_RenderRect(targetRenderer, &r);
 }
 
 void SDLAppBase::renderLine(int x1, int y1, int x2, int y2, SDL_Color color,
                            SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
-    SDL_RenderDrawLine(targetRenderer, x1, y1, x2, y2);
+    SDL_RenderLine(targetRenderer,
+                   static_cast<float>(x1),
+                   static_cast<float>(y1),
+                   static_cast<float>(x2),
+                   static_cast<float>(y2));
 }
+
 
 bool SDLAppBase::isPointInRect(int x, int y, const SDL_Rect& rect) {
     return x >= rect.x && x < rect.x + rect.w &&

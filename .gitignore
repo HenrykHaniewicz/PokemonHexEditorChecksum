@@ -14,8 +14,7 @@ ehthumbs.db
 Thumbs.db
 __pycache__/*
 edited_files/*
+DevTest
 data
 obj
 DO_NOT_EDIT
-hex_editor
-checksum
