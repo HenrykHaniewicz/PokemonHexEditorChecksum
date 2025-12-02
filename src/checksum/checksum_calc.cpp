@@ -659,14 +659,14 @@ size_t ChecksumCalculator::findSectionOffset(const Gen3SaveBlock& saveBlock, uin
             return saveBlock.sections[i].sectionBaseAddress;
         }
     }
-    return 0;
+    return static_cast<size_t>(-1);
 }
 
 void ChecksumCalculator::calculatePartyPokemonChecksums(const Gen3SaveBlock& saveBlock,
                                                        std::vector<PokemonChecksumResult>& results,
                                                        const std::string& saveBlockName) {
     size_t sectionOffset = findSectionOffset(saveBlock, 1);
-    if (sectionOffset == 0) {
+    if (sectionOffset == static_cast<size_t>(-1)) {
         std::cerr << "Warning: Could not find Section 1 in " << saveBlockName << std::endl;
         return;
     }
@@ -705,7 +705,7 @@ void ChecksumCalculator::calculateBoxPokemonChecksums(const Gen3SaveBlock& saveB
     
     for (int sectionId = 5; sectionId <= 13; sectionId++) {
         size_t sectionOffset = findSectionOffset(saveBlock, sectionId);
-        if (sectionOffset == 0) continue;
+        if (sectionOffset == static_cast<size_t>(-1)) continue;
         
         size_t startOffset = (sectionId == 5) ? 0x04 : 0x00;
         size_t usableBytes = 0x0F80 - startOffset;
