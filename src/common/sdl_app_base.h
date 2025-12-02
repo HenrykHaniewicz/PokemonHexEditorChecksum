@@ -5,6 +5,7 @@
 #include <SDL3_ttf/SDL_ttf.h>
 #include <string>
 #include <iostream>
+#include <functional>
 
 struct ColorScheme {
     SDL_Color background = {30, 30, 30, 255};
@@ -20,11 +21,58 @@ struct ColorScheme {
     SDL_Color selectedBg = {80, 80, 120, 255};
     SDL_Color buttonBg = {70, 70, 90, 255};
     SDL_Color buttonHover = {90, 90, 110, 255};
+    SDL_Color buttonYes = {60, 150, 60, 255};
+    SDL_Color buttonYesHover = {100, 200, 100, 255};
+    SDL_Color buttonYesBorder = {150, 255, 150, 255};
+    SDL_Color buttonNo = {150, 60, 60, 255};
+    SDL_Color buttonNoHover = {200, 100, 100, 255};
+    SDL_Color buttonNoBorder = {255, 150, 150, 255};
     SDL_Color dialogBg = {50, 50, 60, 255};
     SDL_Color dialogBorder = {100, 100, 120, 255};
     SDL_Color scrollbarBg = {50, 50, 50, 255};
     SDL_Color scrollbarFg = {100, 100, 100, 255};
     SDL_Color scrollbarHover = {130, 130, 130, 255};
+};
+
+// Scrollbar configuration and state
+struct ScrollbarState {
+    int width = 14;
+    int headerOffset = 0;
+    
+    // Scroll position
+    size_t offset = 0;
+    size_t visibleItems = 0;
+    size_t totalItems = 0;
+    
+    // Momentum scrolling
+    float velocity = 0.0f;
+    float accumulatedScroll = 0.0f;
+    static constexpr float FRICTION = 0.92f;
+    static constexpr float STOP_THRESHOLD = 0.1f;
+    
+    // Dragging state
+    bool dragging = false;
+    int dragStartY = 0;
+    float dragStartRatio = 0.0f;
+    
+    // Check if scrolling is needed
+    bool canScroll() const { return totalItems > visibleItems; }
+    
+    // Get maximum scroll offset
+    size_t maxOffset() const { 
+        return (totalItems > visibleItems) ? (totalItems - visibleItems) : 0; 
+    }
+};
+
+// Confirmation dialog configuration
+struct ConfirmDialogConfig {
+    std::string title = "WARNING";
+    std::string message1;
+    std::string message2;
+    std::string yesText = "YES (Y)";
+    std::string noText = "NO (N)";
+    int dialogWidth = 500;
+    int dialogHeight = 250;
 };
 
 class SDLAppBase {
@@ -33,7 +81,7 @@ protected:
     SDL_Renderer* renderer;
     TTF_Font* font;
     TTF_Font* largeFont;
-    TTF_Font* regularFont; // Alias for font
+    TTF_Font* regularFont;
     
     std::string windowTitle;
     int windowWidth;
@@ -46,6 +94,9 @@ protected:
     
     ColorScheme colors;
     
+    // Scrollbar state
+    ScrollbarState scrollbar;
+    
     // Font loading
     bool loadFonts(int normalSize = 14, int largeSize = 48);
     
@@ -57,8 +108,6 @@ protected:
     void renderCenteredText(const std::string& text, int y, SDL_Color color, 
                            TTF_Font* f = nullptr, SDL_Renderer* targetRenderer = nullptr);
     void getTextSize(const std::string& text, int& w, int& h, TTF_Font* f = nullptr);
-    
-    // Centered text with custom x position
     void renderCenteredTextAt(const std::string& text, int x, int y, SDL_Color color,
                              TTF_Font* f = nullptr, SDL_Renderer* targetRenderer = nullptr);
     
@@ -71,6 +120,22 @@ protected:
                           SDL_Renderer* targetRenderer = nullptr);
     void renderLine(int x1, int y1, int x2, int y2, SDL_Color color,
                    SDL_Renderer* targetRenderer = nullptr);
+    
+    // Scrollbar utilities
+    void getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight, 
+                              int& thumbY, int& thumbHeight) const;
+    void renderScrollbar(SDL_Renderer* targetRenderer = nullptr);
+    bool handleScrollbarClick(int x, int y);
+    void handleScrollbarDrag(int y);
+    void handleScrollbarRelease();
+    void scrollBy(int64_t items);
+    void scrollBySmooth(float items);
+    void scrollToRatio(float ratio);
+    void addScrollVelocity(float amount, float maxVelocity = 50.0f);
+    void updateMomentumScroll(float deltaTime);
+    
+    // Confirmation dialog utilities
+    bool showConfirmDialog(const ConfirmDialogConfig& config);
     
     // Utility functions
     bool isPointInRect(int x, int y, const SDL_Rect& rect);

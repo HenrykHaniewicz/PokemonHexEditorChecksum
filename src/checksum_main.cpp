@@ -7,11 +7,12 @@ void printUsage(const char* progName) {
     std::cerr << "Checksum Calculator" << std::endl;
     std::cerr << "\nCalculates game-specific checksums with hardcoded addresses." << std::endl;
     std::cerr << "\nUsage:" << std::endl;
-    std::cerr << "  " << progName << " [-j] [-w] [-o] <file> <game>" << std::endl;
+    std::cerr << "  " << progName << " [-j] [-w] [-o] [-p] <file> <game>" << std::endl;
     std::cerr << "\nOptions:" << std::endl;
     std::cerr << "  -j, --japan   Use Japanese version addresses (Gen 1 and 2 games)" << std::endl;
     std::cerr << "  -w            Write checksums to file (saves in edited_files/)" << std::endl;
     std::cerr << "  -o            Overwrite original file (requires -w)" << std::endl;
+    std::cerr << "  -p            Pokemon checksum mode (doesn't work with -w)" << std::endl;
     std::cerr << "\nSupported games:" << std::endl;
     std::cerr << "  red, blue, yellow, green - Pokemon Red/Blue/Yellow and Japanese Green (GB)" << std::endl;
     std::cerr << "  gold, silver             - Pokemon Gold/Silver (GBC)" << std::endl;
@@ -26,6 +27,7 @@ void printUsage(const char* progName) {
     std::cerr << "  " << progName << " -j Pokemon_Crystal_JP.sav crystal" << std::endl;
     std::cerr << "  " << progName << " -j -w Pokemon_Gold_JP.sav gold" << std::endl;
     std::cerr << "  " << progName << " -w Pokemon_Emerald.sav emerald" << std::endl;
+    std::cerr << "  " << progName << " -p Pokemon_Emerald.sav emerald" << std::endl;
     std::cerr << "  " << progName << " Pokemon_FireRed.sav firered" << std::endl;
 }
 
@@ -38,6 +40,7 @@ int main(int argc, char** argv) {
     bool isJapanese = false;
     bool shouldWrite = false;
     bool shouldOverwrite = false;
+    bool pokemonMode = false; 
     int argIndex = 1;
     
     // Parse flags
@@ -49,6 +52,8 @@ int main(int argc, char** argv) {
             shouldWrite = true;
         } else if (flag == "-o") {
             shouldOverwrite = true;
+        } else if (flag == "-p") {
+            pokemonMode = true;
         } else {
             std::cerr << "Unknown flag: " << flag << std::endl;
             printUsage(argv[0]);
@@ -87,6 +92,7 @@ int main(int argc, char** argv) {
     calc.setJapanese(isJapanese);
     calc.setWriteMode(shouldWrite);
     calc.setOverwriteMode(shouldOverwrite);
+    calc.setPokemonMode(pokemonMode);
     
     if (!calc.setGame(game)) {
         return 1;

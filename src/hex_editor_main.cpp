@@ -78,7 +78,7 @@ bool parseReplacementFile(const std::string& filepath,
         
         // Trim whitespace
         size_t start = line.find_first_not_of(" \t\r\n");
-        if (start == std::string::npos) continue; // Empty line
+        if (start == std::string::npos) continue;
         
         line = line.substr(start);
         

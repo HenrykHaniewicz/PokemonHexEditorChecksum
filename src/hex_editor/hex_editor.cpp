@@ -7,19 +7,15 @@
 HexEditor::HexEditor() 
     : SDLAppBase("GBA/GB Hex Editor", 800, 700),
       fileSize(0),
-      headerHeight(50), scrollbarWidth(14),
+      headerHeight(50),
       byteGrouping(1),
       textEncoding(TextEncoding::ASCII),
       baseCharWidth(0), baseCharHeight(0),
       effectiveCharWidth(0), effectiveCharHeight(0),
       addressX(10), hexX(0), asciiX(0), contentEndX(0),
-      scrollOffset(0), visibleRows(0), totalRows(0),
-      scrollVelocity(0.0f), accumulatedScroll(0.0f),
-      draggingScrollbar(false), dragStartY(0), dragStartRatio(0.0f),
       zoomLevel(1.0f), targetZoomLevel(1.0f),
       gotoMode(false),
       selectedByteIndex(-1), hasUnsavedChanges(false),
-      showConfirmDialog(false), confirmOverwrite(false),
       overwriteMode(false),
       isSelecting(false), selectionStart(-1), selectionEnd(-1) {
 }
@@ -43,19 +39,16 @@ void HexEditor::setByteGrouping(int grouping) {
 }
 
 float HexEditor::calculateMaxZoom() {
-    int availableWidth = windowWidth - scrollbarWidth - 20;  // 20 for margins
+    int availableWidth = windowWidth - scrollbar.width - 20;
     
-    // Calculate base content width (at zoom 1.0)
     int baseHexX = addressX + baseCharWidth * 10;
-    
-    // Hex section: 16 bytes, with grouping spaces and center gap
     int numGroups = 16 / byteGrouping;
-    int baseHexWidth = numGroups * (byteGrouping * 2 + 1) * baseCharWidth + baseCharWidth;  // +1 char for center gap
+    int baseHexWidth = numGroups * (byteGrouping * 2 + 1) * baseCharWidth + baseCharWidth;
     
     int baseAsciiX = baseHexX + baseHexWidth;
     int baseContentWidth = baseAsciiX + baseCharWidth * 16 + 10;
     
-    float maxZoom = (float)availableWidth / (float)baseContentWidth;
+    float maxZoom = static_cast<float>(availableWidth) / static_cast<float>(baseContentWidth);
     
     return std::max(MIN_ZOOM, std::min(maxZoom, MAX_ZOOM));
 }
@@ -80,23 +73,24 @@ void HexEditor::recalculateLayoutForZoom() {
         baseCharHeight = charHeight;
     }
     
-    effectiveCharWidth = (int)(baseCharWidth * zoomLevel);
-    effectiveCharHeight = (int)(baseCharHeight * zoomLevel);
+    effectiveCharWidth = static_cast<int>(baseCharWidth * zoomLevel);
+    effectiveCharHeight = static_cast<int>(baseCharHeight * zoomLevel);
     
     addressX = 10;
     hexX = addressX + effectiveCharWidth * 10;
     
-    // Calculate hex section width with proper spacing
     int numGroups = 16 / byteGrouping;
     int hexSectionWidth = numGroups * (byteGrouping * 2 + 1) * effectiveCharWidth;
-    hexSectionWidth += effectiveCharWidth;  // Extra gap in middle (between byte 7 and 8)
+    hexSectionWidth += effectiveCharWidth;
     
     asciiX = hexX + hexSectionWidth;
     contentEndX = asciiX + effectiveCharWidth * 16 + 10;
     
-    // Calculate visible rows
+    // Update scrollbar configuration
+    scrollbar.headerOffset = headerHeight;
     int availableHeight = windowHeight - headerHeight - effectiveCharHeight - 20;
-    visibleRows = std::max(1, availableHeight / effectiveCharHeight);
+    scrollbar.visibleItems = std::max(1, availableHeight / effectiveCharHeight);
+    scrollbar.totalItems = (fileSize + ROW_SIZE - 1) / ROW_SIZE;
     
     needsRedraw = true;
 }
@@ -106,12 +100,9 @@ int HexEditor::getByteXPosition(int byteInRow) {
     int posInGroup = byteInRow % byteGrouping;
     
     int x = hexX;
-    // Add space for each complete group before this one
     x += groupIndex * (byteGrouping * 2 + 1) * effectiveCharWidth;
-    // Add position within current group
     x += posInGroup * 2 * effectiveCharWidth;
     
-    // Add extra gap after byte 7 (between first and second half)
     if (byteInRow >= 8) {
         x += effectiveCharWidth;
     }
@@ -135,8 +126,8 @@ bool HexEditor::loadFile(const char* filename) {
     savedFileBuffer = fileBuffer;
     undoStack.clear();
     
-    totalRows = (fileSize + ROW_SIZE - 1) / ROW_SIZE;
-    scrollOffset = 0;
+    scrollbar.totalItems = (fileSize + ROW_SIZE - 1) / ROW_SIZE;
+    scrollbar.offset = 0;
     hasUnsavedChanges = false;
     modifiedBytes.clear();
     selectedByteIndex = -1;
@@ -169,136 +160,55 @@ void HexEditor::onResize(int /*newWidth*/, int /*newHeight*/) {
     recalculateLayoutForZoom();
 }
 
-void HexEditor::getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight, int& thumbY, int& thumbHeight) {
-    sbX = windowWidth - scrollbarWidth;
-    sbY = headerHeight;
-    sbHeight = windowHeight - headerHeight;
-    
-    if (totalRows > visibleRows) {
-        float thumbRatio = (float)visibleRows / totalRows;
-        thumbHeight = std::max(30, (int)(sbHeight * thumbRatio));
-        float scrollRatio = (float)scrollOffset / (totalRows - visibleRows);
-        thumbY = sbY + (int)((sbHeight - thumbHeight) * scrollRatio);
-    } else {
-        thumbHeight = sbHeight;
-        thumbY = sbY;
-    }
-}
-
 int HexEditor::getByteIndexFromPosition(int x, int y) {
     int contentY = headerHeight + 5 + effectiveCharHeight;
     if (y < contentY) return -1;
     
     int row = (y - contentY) / effectiveCharHeight;
-    if (row < 0 || (size_t)row >= visibleRows) return -1;
+    if (row < 0 || static_cast<size_t>(row) >= scrollbar.visibleItems) return -1;
     
-    size_t actualRow = scrollOffset + row;
-    if (actualRow >= totalRows) return -1;
+    size_t actualRow = scrollbar.offset + row;
+    if (actualRow >= scrollbar.totalItems) return -1;
     
-    // Check if click is in hex area
     if (x < hexX || x >= asciiX) return -1;
     
-    // Find which byte was clicked
     for (int i = 0; i < ROW_SIZE; i++) {
         int byteX = getByteXPosition(i);
         int byteEndX = byteX + effectiveCharWidth * 2;
         if (x >= byteX && x < byteEndX) {
             size_t byteIndex = actualRow * ROW_SIZE + i;
             if (byteIndex >= fileSize) return -1;
-            return (int)byteIndex;
+            return static_cast<int>(byteIndex);
         }
     }
     
     return -1;
 }
 
-void HexEditor::scrollBy(int64_t rows) {
-    if (totalRows <= visibleRows) return;
-    
-    int64_t newOffset = (int64_t)scrollOffset + rows;
-    newOffset = std::max((int64_t)0, newOffset);
-    newOffset = std::min((int64_t)(totalRows - visibleRows), newOffset);
-    
-    if ((size_t)newOffset != scrollOffset) {
-        scrollOffset = newOffset;
-        needsRedraw = true;
-    }
-}
-
-void HexEditor::scrollBySmooth(float rows) {
-    if (totalRows <= visibleRows) return;
-    
-    accumulatedScroll += rows;
-    
-    while (accumulatedScroll >= 1.0f) {
-        if (scrollOffset < totalRows - visibleRows) {
-            scrollOffset++;
-            needsRedraw = true;
-        }
-        accumulatedScroll -= 1.0f;
-    }
-    while (accumulatedScroll <= -1.0f) {
-        if (scrollOffset > 0) {
-            scrollOffset--;
-            needsRedraw = true;
-        }
-        accumulatedScroll += 1.0f;
-    }
-    
-    if (scrollOffset == 0 && accumulatedScroll < 0) {
-        accumulatedScroll = 0;
-    }
-    if (scrollOffset >= totalRows - visibleRows && accumulatedScroll > 0) {
-        accumulatedScroll = 0;
-    }
-}
-
 void HexEditor::handleMouseWheel(SDL_MouseWheelEvent& wheel) {
-    if (showConfirmDialog) return;
-    
     SDL_Keymod mod = SDL_GetModState();
     if (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) {
-        // Zoom with scroll wheel when Ctrl/Cmd is held
         float zoomDelta = wheel.y * ZOOM_STEP;
         adjustZoom(zoomDelta);
         return;
     }
 
-    float scrollAmount = -wheel.y;
-
-    // Treat all wheel motion as "precise" and use momentum
-    scrollVelocity += scrollAmount * 0.2f;
-
-    float maxVelocity = 50.0f;
-    if (scrollVelocity > maxVelocity) scrollVelocity = maxVelocity;
-    if (scrollVelocity < -maxVelocity) scrollVelocity = -maxVelocity;
-}
-
-
-void HexEditor::scrollToRatio(float ratio) {
-    if (totalRows <= visibleRows) return;
-    
-    ratio = std::max(0.0f, std::min(1.0f, ratio));
-    size_t newOffset = (size_t)(ratio * (totalRows - visibleRows));
-    
-    if (newOffset != scrollOffset) {
-        scrollOffset = newOffset;
-        needsRedraw = true;
-    }
+    float scrollAmount = -wheel.y * 0.2f;
+    addScrollVelocity(scrollAmount);
 }
 
 void HexEditor::scrollToAddress(size_t address) {
     if (address >= fileSize) address = fileSize - 1;
     size_t row = address / ROW_SIZE;
     
-    if (row > visibleRows / 2) {
-        scrollOffset = row - visibleRows / 2;
+    if (row > scrollbar.visibleItems / 2) {
+        scrollbar.offset = row - scrollbar.visibleItems / 2;
     } else {
-        scrollOffset = 0;
+        scrollbar.offset = 0;
     }
     
-    if (scrollOffset + visibleRows > totalRows) {
-        scrollOffset = (totalRows > visibleRows) ? totalRows - visibleRows : 0;
+    if (scrollbar.offset + scrollbar.visibleItems > scrollbar.totalItems) {
+        scrollbar.offset = scrollbar.maxOffset();
     }
     needsRedraw = true;
 }
@@ -311,7 +221,6 @@ void HexEditor::update(float deltaTime) {
         float diff = targetZoomLevel - zoomLevel;
         float step = diff * ZOOM_SMOOTH_SPEED * deltaTime;
         
-        // Prevent overshooting
         if (std::abs(step) > std::abs(diff)) {
             zoomLevel = targetZoomLevel;
         } else {
@@ -322,16 +231,8 @@ void HexEditor::update(float deltaTime) {
         needsUpdate = true;
     }
     
-    // Handle momentum scrolling
-    if (std::abs(scrollVelocity) > SCROLL_STOP_THRESHOLD) {
-        float scrollDelta = scrollVelocity * deltaTime * 60.0f;
-        scrollBySmooth(scrollDelta);
-        scrollVelocity *= SCROLL_FRICTION;
-        needsUpdate = true;
-    } else if (scrollVelocity != 0) {
-        scrollVelocity = 0;
-        accumulatedScroll = 0;
-    }
+    // Let base class handle momentum scrolling
+    SDLAppBase::update(deltaTime);
     
     if (needsUpdate) {
         needsRedraw = true;
@@ -339,7 +240,7 @@ void HexEditor::update(float deltaTime) {
 }
 
 void HexEditor::selectByte(int64_t index) {
-    if (index >= 0 && (size_t)index < fileSize) {
+    if (index >= 0 && static_cast<size_t>(index) < fileSize) {
         if (selectedByteIndex >= 0 && !editBuffer.empty()) {
             commitEdit();
         }
@@ -348,7 +249,7 @@ void HexEditor::selectByte(int64_t index) {
         editBuffer.clear();
         
         size_t row = index / ROW_SIZE;
-        if (row < scrollOffset || row >= scrollOffset + visibleRows) {
+        if (row < scrollbar.offset || row >= scrollbar.offset + scrollbar.visibleItems) {
             scrollToAddress(index);
         }
         
@@ -359,11 +260,10 @@ void HexEditor::selectByte(int64_t index) {
 void HexEditor::commitEdit() {
     if (selectedByteIndex >= 0 && editBuffer.length() == 2) {
         unsigned int value = std::stoul(editBuffer, nullptr, 16);
-        if (fileBuffer[selectedByteIndex] != (char)value) {
+        if (fileBuffer[selectedByteIndex] != static_cast<char>(value)) {
             char oldValue = fileBuffer[selectedByteIndex];
-            char newValue = (char)value;
+            char newValue = static_cast<char>(value);
 
-            // Record this change for undo
             undoStack.push_back(EditAction{
                 static_cast<size_t>(selectedByteIndex),
                 oldValue,
@@ -378,13 +278,11 @@ void HexEditor::commitEdit() {
     needsRedraw = true;
 }
 
-
 void HexEditor::undoLastEdit() {
     if (undoStack.empty()) {
         return;
     }
 
-    // For half-typed bytes
     if (!editBuffer.empty()) {
         editBuffer.clear();
     }
@@ -401,7 +299,6 @@ void HexEditor::undoLastEdit() {
 
     needsRedraw = true;
 }
-
 
 void HexEditor::updateModifiedState(size_t index) {
     if (index >= fileSize || savedFileBuffer.size() != fileSize) {
@@ -426,7 +323,7 @@ void HexEditor::handleEditInput(char c) {
         
         if (editBuffer.length() >= 2) {
             commitEdit();
-            if ((size_t)(selectedByteIndex + 1) < fileSize) {
+            if (static_cast<size_t>(selectedByteIndex + 1) < fileSize) {
                 selectByte(selectedByteIndex + 1);
             }
         }
@@ -453,14 +350,22 @@ bool HexEditor::saveFile() {
     
     std::string outputPath = getOutputPath();
     
-    if (fileExists(outputPath) && !confirmOverwrite) {
-        showConfirmDialog = true;
-        needsRedraw = true;
-        return false;
+    // Check if file exists and show confirmation dialog
+    if (fileExists(outputPath)) {
+        ConfirmDialogConfig config;
+        config.title = "WARNING";
+        if (overwriteMode) {
+            config.message1 = "Overwrite this file?";
+        } else {
+            config.message1 = "File already exists in 'edited_files'.";
+        }
+        config.message2 = HexUtils::getBaseName(outputPath);
+        
+        if (!showConfirmDialog(config)) {
+            std::cout << "Save cancelled." << std::endl;
+            return false;
+        }
     }
-    
-    showConfirmDialog = false;
-    confirmOverwrite = false;
     
     std::ofstream outFile(outputPath, std::ios::binary);
     if (!outFile) {
@@ -468,7 +373,7 @@ bool HexEditor::saveFile() {
         return false;
     }
     
-    outFile.write(fileBuffer.data(), fileSize);
+    outFile.write(fileBuffer.data(), static_cast<std::streamsize>(fileSize));
     outFile.close();
     
     savedFileBuffer = fileBuffer;
@@ -512,7 +417,6 @@ void HexEditor::getSelectionRange(int64_t& start, int64_t& end) const {
 
 void HexEditor::handleCopy() {
     if (!hasSelection()) {
-        // If no selection, copy single selected byte
         if (selectedByteIndex >= 0) {
             unsigned char byte = fileBuffer[selectedByteIndex];
             std::string hexStr = HexUtils::toHexString(byte, 2);
@@ -526,7 +430,7 @@ void HexEditor::handleCopy() {
     
     std::stringstream ss;
     for (int64_t i = start; i <= end; i++) {
-        if (i < (int64_t)fileSize) {
+        if (i < static_cast<int64_t>(fileSize)) {
             unsigned char byte = fileBuffer[i];
             ss << HexUtils::toHexString(byte, 2);
         }
@@ -598,47 +502,18 @@ void HexEditor::handleTextInput(const char* text) {
 }
 
 void HexEditor::handleMouseDown(int x, int y) {
-    if (showConfirmDialog) {
-        if (isPointInRect(x, y, yesButtonRect)) {
-            confirmOverwrite = true;
-            saveFile();
-        } else if (isPointInRect(x, y, noButtonRect)) {
-            showConfirmDialog = false;
-            confirmOverwrite = false;
-            needsRedraw = true;
-        }
-        return;
-    }
-    
     if (isPointInRect(x, y, saveButtonRect)) {
-        confirmOverwrite = false;
         saveFile();
         return;
     }
     
-    int sbX, sbY, sbHeight, thumbY, thumbHeight;
-    getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-    
-    if (x >= sbX && x < sbX + scrollbarWidth &&
-        y >= sbY && y < sbY + sbHeight) {
-        
-        if (totalRows <= visibleRows) return;
-        
-        if (y >= thumbY && y < thumbY + thumbHeight) {
-            draggingScrollbar = true;
-            dragStartY = y;
-            dragStartRatio = (float)scrollOffset / (totalRows - visibleRows);
-        } else {
-            float clickRatio = (float)(y - sbY) / sbHeight;
-            scrollToRatio(clickRatio);
-        }
-        needsRedraw = true;
+    // Check scrollbar
+    if (handleScrollbarClick(x, y)) {
         return;
     }
     
     int byteIndex = getByteIndexFromPosition(x, y);
     if (byteIndex >= 0) {
-        // Start selection
         if (selectedByteIndex >= 0 && !editBuffer.empty()) {
             commitEdit();
         }
@@ -661,29 +536,17 @@ void HexEditor::handleMouseDown(int x, int y) {
 }
 
 void HexEditor::handleMouseUp() {
-    if (draggingScrollbar) {
-        draggingScrollbar = false;
-        needsRedraw = true;
-    }
+    handleScrollbarRelease();
     
     if (isSelecting) {
         isSelecting = false;
-        // Keep the selection for copying
         needsRedraw = true;
     }
 }
 
-
 void HexEditor::handleMouseMotion(int x, int y) {
-    if (draggingScrollbar && totalRows > visibleRows) {
-        int sbX, sbY, sbHeight, thumbY, thumbHeight;
-        getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-        
-        int deltaY = y - dragStartY;
-        float deltaRatio = (float)deltaY / (sbHeight - thumbHeight);
-        float newRatio = dragStartRatio + deltaRatio;
-        
-        scrollToRatio(newRatio);
+    if (scrollbar.dragging) {
+        handleScrollbarDrag(y);
         return;
     }
     
@@ -697,7 +560,6 @@ void HexEditor::handleMouseMotion(int x, int y) {
 }
 
 void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
-    // Handle zoom shortcuts (Cmd/Ctrl + Plus/Minus)
     if (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) {
         if (key == SDLK_Z) {
             undoLastEdit();
@@ -741,7 +603,7 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
             break;
         case SDLK_DOWN:
             clearSelection();
-            if (selectedByteIndex >= 0 && (size_t)(selectedByteIndex + ROW_SIZE) < fileSize) {
+            if (selectedByteIndex >= 0 && static_cast<size_t>(selectedByteIndex + ROW_SIZE) < fileSize) {
                 selectByte(selectedByteIndex + ROW_SIZE);
             } else {
                 scrollBy(1);
@@ -755,7 +617,7 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
             break;
         case SDLK_RIGHT:
             clearSelection();
-            if (selectedByteIndex >= 0 && (size_t)(selectedByteIndex + 1) < fileSize) {
+            if (selectedByteIndex >= 0 && static_cast<size_t>(selectedByteIndex + 1) < fileSize) {
                 selectByte(selectedByteIndex + 1);
             }
             break;
@@ -765,25 +627,25 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
                 if (mod & SDL_KMOD_SHIFT) {
                     if (selectedByteIndex > 0) selectByte(selectedByteIndex - 1);
                 } else {
-                    if ((size_t)(selectedByteIndex + 1) < fileSize) selectByte(selectedByteIndex + 1);
+                    if (static_cast<size_t>(selectedByteIndex + 1) < fileSize) selectByte(selectedByteIndex + 1);
                 }
             }
             break;
         case SDLK_PAGEUP:
             clearSelection();
-            scrollBy(-(int64_t)visibleRows);
+            scrollBy(-static_cast<int64_t>(scrollbar.visibleItems));
             break;
         case SDLK_PAGEDOWN:
             clearSelection();
-            scrollBy(visibleRows);
+            scrollBy(static_cast<int64_t>(scrollbar.visibleItems));
             break;
         case SDLK_HOME:
             clearSelection();
             if (mod & SDL_KMOD_CTRL) {
-                scrollOffset = 0;
+                scrollbar.offset = 0;
                 selectByte(0);
-            } else if (scrollOffset != 0) {
-                scrollOffset = 0;
+            } else if (scrollbar.offset != 0) {
+                scrollbar.offset = 0;
                 needsRedraw = true;
             }
             break;
@@ -791,10 +653,10 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
             clearSelection();
             if (mod & SDL_KMOD_CTRL) {
                 selectByte(fileSize - 1);
-            } else if (totalRows > visibleRows) {
-                size_t newOffset = totalRows - visibleRows;
-                if (scrollOffset != newOffset) {
-                    scrollOffset = newOffset;
+            } else if (scrollbar.canScroll()) {
+                size_t newOffset = scrollbar.maxOffset();
+                if (scrollbar.offset != newOffset) {
+                    scrollbar.offset = newOffset;
                     needsRedraw = true;
                 }
             }
@@ -827,15 +689,15 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
                 needsRedraw = true;
             }
             break;
+        default:
+            break;
     }
 }
 
 void HexEditor::handleEvent(SDL_Event& event) {
     switch (event.type) {            
         case SDL_EVENT_TEXT_INPUT:
-            if (!showConfirmDialog) {
-                handleTextInput(event.text.text);
-            }
+            handleTextInput(event.text.text);
             break;
             
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -861,25 +723,17 @@ void HexEditor::handleEvent(SDL_Event& event) {
             break;
             
         case SDL_EVENT_KEY_DOWN:
-            if (showConfirmDialog) {
-                if (event.key.key == SDLK_Y) {
-                    confirmOverwrite = true;
-                    saveFile();
-                } else if (event.key.key == SDLK_N || 
-                           event.key.key == SDLK_ESCAPE) {
-                    showConfirmDialog = false;
-                    confirmOverwrite = false;
-                    needsRedraw = true;
-                }
-            } else if (gotoMode) {
+            if (gotoMode) {
                 handleGotoInput(event.key.key, event.key.mod);
             } else {
                 handleKeyDown(event.key.key, event.key.mod);
             }
             break;
+            
+        default:
+            break;
     }
 }
-
 
 void HexEditor::renderHeader() {
     SDL_Rect headerRect = {0, 0, windowWidth, headerHeight};
@@ -896,15 +750,15 @@ void HexEditor::renderHeader() {
     
     SDL_Color headerColor = colors.text;
     if (overwriteMode) {
-        headerColor = colors.warning;  // Use warning color to make it more visible
+        headerColor = colors.warning;
     } else if (hasUnsavedChanges) {
         headerColor = colors.error;
     }
     
     renderText(ss.str(), 10, 5, headerColor);
     
-    size_t currentAddr = scrollOffset * ROW_SIZE;
-    size_t endAddr = std::min(currentAddr + visibleRows * ROW_SIZE, fileSize);
+    size_t currentAddr = scrollbar.offset * ROW_SIZE;
+    size_t endAddr = std::min(currentAddr + scrollbar.visibleItems * ROW_SIZE, fileSize);
     ss.str("");
     
     if (selectedByteIndex >= 0) {
@@ -917,12 +771,11 @@ void HexEditor::renderHeader() {
            << " - 0x" << HexUtils::toHexString(endAddr, 8);
     }
     
-    // Show zoom level
-    ss << " | Zoom: " << (int)(zoomLevel * 100 + 0.5f) << "%";
+    ss << " | Zoom: " << static_cast<int>(zoomLevel * 100 + 0.5f) << "%";
     
     renderText(ss.str(), 10, 5 + charHeight, colors.text);
     
-    int rightX = windowWidth - scrollbarWidth;
+    int rightX = windowWidth - scrollbar.width;
     
     saveButtonRect = {rightX - 180, 10, 50, charHeight + 6};
     renderButton(saveButtonRect, "Save");
@@ -940,42 +793,11 @@ void HexEditor::renderHeader() {
     renderLine(0, headerHeight - 1, windowWidth, headerHeight - 1, {60, 60, 60, 255});
 }
 
-void HexEditor::renderConfirmationDialog() {
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_Rect fullScreen = {0, 0, windowWidth, windowHeight};
-    renderFilledRect(fullScreen, {0, 0, 0, 150}, renderer);
-    
-    int dialogW = 350;
-    int dialogH = 120;
-    int dialogX = (windowWidth - dialogW) / 2;
-    int dialogY = (windowHeight - dialogH) / 2;
-    
-    SDL_Rect dialogRect = {dialogX, dialogY, dialogW, dialogH};
-    renderFilledRect(dialogRect, colors.dialogBg);
-    renderOutlineRect(dialogRect, colors.dialogBorder);
-    
-    std::string msg1 = overwriteMode ? "File already exists." : "File already exists in 'edited_files'.";
-    renderText(msg1, dialogX + 20, dialogY + 15, colors.text);
-    renderText("Do you want to overwrite it?", dialogX + 20, dialogY + 35, colors.text);
-    
-    int buttonW = 80;
-    int buttonH = 30;
-    int buttonY = dialogY + dialogH - buttonH - 15;
-    
-    yesButtonRect = {dialogX + dialogW / 2 - buttonW - 20, buttonY, buttonW, buttonH};
-    noButtonRect = {dialogX + dialogW / 2 + 20, buttonY, buttonW, buttonH};
-    
-    renderButton(yesButtonRect, "Yes");
-    renderButton(noButtonRect, "No");
-}
-
-
 void HexEditor::render() {
     SDL_SetRenderDrawColor(renderer, colors.background.r, colors.background.g, 
                           colors.background.b, 255);
     SDL_RenderClear(renderer);
     
-    // Reset any scaling
     SDL_SetRenderScale(renderer, 1.0f, 1.0f);
     
     renderHeader();
@@ -988,7 +810,6 @@ void HexEditor::render() {
     
     int y = headerHeight + 5;
     
-    // Render column headers with zoomed font
     renderTextScaled("Address", addressX, y, colors.textDim, zoomLevel);
     
     for (int i = 0; i < ROW_SIZE; ++i) {
@@ -1003,41 +824,35 @@ void HexEditor::render() {
     renderTextScaled(decodedHeader, asciiX, y, colors.textDim, zoomLevel);
     y += effectiveCharHeight;
     
-    renderLine(addressX, y - 2, windowWidth - scrollbarWidth - 5, y - 2, {50, 50, 50, 255});
+    renderLine(addressX, y - 2, windowWidth - scrollbar.width - 5, y - 2, {50, 50, 50, 255});
     
-    // Get selection range if there is one
     int64_t selStart = -1, selEnd = -1;
     if (hasSelection()) {
         getSelectionRange(selStart, selEnd);
     }
     
-    for (size_t row = 0; row < visibleRows && (scrollOffset + row) < totalRows; row++) {
-        size_t currentRow = scrollOffset + row;
+    for (size_t row = 0; row < scrollbar.visibleItems && (scrollbar.offset + row) < scrollbar.totalItems; row++) {
+        size_t currentRow = scrollbar.offset + row;
         size_t address = currentRow * ROW_SIZE;
-        size_t bytesInRow = std::min((size_t)ROW_SIZE, fileSize - address);
+        size_t bytesInRow = std::min(static_cast<size_t>(ROW_SIZE), fileSize - address);
         
-        // Alternating row background
         if (row % 2 == 1) {
-            SDL_Rect rowRect = {0, y, windowWidth - scrollbarWidth, effectiveCharHeight};
+            SDL_Rect rowRect = {0, y, windowWidth - scrollbar.width, effectiveCharHeight};
             renderFilledRect(rowRect, {35, 35, 35, 255});
         }
         
-        // Address
         renderTextScaled(HexUtils::toHexString(address, 8), addressX, y, colors.accent, zoomLevel);
         
-        // Hex bytes
         for (size_t i = 0; i < ROW_SIZE; i++) {
             size_t byteIndex = address + i;
-            int byteX = getByteXPosition((int)i);
+            int byteX = getByteXPosition(static_cast<int>(i));
             
             if (i < bytesInRow) {
-                // Check if this byte is in selection range
                 bool inSelection = (selStart >= 0 && selEnd >= 0 && 
-                                   (int64_t)byteIndex >= selStart && 
-                                   (int64_t)byteIndex <= selEnd);
+                                   static_cast<int64_t>(byteIndex) >= selStart && 
+                                   static_cast<int64_t>(byteIndex) <= selEnd);
                 
-                // Selection or single byte highlight
-                if (inSelection || (int64_t)byteIndex == selectedByteIndex) {
+                if (inSelection || static_cast<int64_t>(byteIndex) == selectedByteIndex) {
                     SDL_Rect selectRect = {byteX, y, effectiveCharWidth * 2, effectiveCharHeight};
                     renderFilledRect(selectRect, colors.selectedBg);
                 }
@@ -1050,17 +865,15 @@ void HexEditor::render() {
             }
         }
         
-        //  Decoded text
         std::string decodedStr;
         for (size_t i = 0; i < bytesInRow; i++) {
             unsigned char c = fileBuffer[address + i];
             std::string decoded = decodeByte(c, textEncoding);
             if (decoded.empty()) {
                 decodedStr += '.';
-            } else if (decoded.length() == 1 && (unsigned char)decoded[0] < 128) {
+            } else if (decoded.length() == 1 && static_cast<unsigned char>(decoded[0]) < 128) {
                 decodedStr += decoded;
             } else {
-                // Multi-byte character - just use first char or placeholder
                 decodedStr += (decoded.length() > 0) ? decoded[0] : '?';
             }
         }
@@ -1069,20 +882,7 @@ void HexEditor::render() {
         y += effectiveCharHeight;
     }
     
-    // Scrollbar
-    int sbX, sbY, sbHeight, thumbY, thumbHeight;
-    getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-    
-    SDL_Rect scrollBgRect = {sbX, sbY, scrollbarWidth, sbHeight};
-    renderFilledRect(scrollBgRect, colors.scrollbarBg);
-    
-    SDL_Rect thumbRect = {sbX + 2, thumbY, scrollbarWidth - 4, thumbHeight};
-    SDL_Color thumbColor = draggingScrollbar ? colors.scrollbarHover : colors.scrollbarFg;
-    renderFilledRect(thumbRect, thumbColor);
-    
-    if (showConfirmDialog) {
-        renderConfirmationDialog();
-    }
+    renderScrollbar();
     
     SDL_RenderPresent(renderer);
 }
@@ -1120,68 +920,8 @@ bool HexEditor::applyBatchEdits(const std::vector<std::pair<size_t, std::vector<
 }
 
 void HexEditor::runBatchSaveMode() {
-    confirmOverwrite = false;
+    // If saveFile returned false, it means user cancelled or there was an error
     if (saveFile()) {
         return;
-    }
-    
-    running = true;
-    SDL_Event event;
-    
-    while (running && showConfirmDialog) {
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) {
-                running = false;
-                showConfirmDialog = false;
-                std::cout << "Save cancelled." << std::endl;
-                break;
-            }
-            
-            if (event.type == SDL_EVENT_WINDOW_RESIZED ||
-                event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
-                windowWidth = event.window.data1;
-                windowHeight = event.window.data2;
-                onResize(windowWidth, windowHeight);
-                continue;
-            }
-
-            if (event.type == SDL_EVENT_WINDOW_EXPOSED) {
-                needsRedraw = true;
-                continue;
-            }
-            
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
-                event.button.button == SDL_BUTTON_LEFT) {
-                int mx = static_cast<int>(event.button.x);
-                int my = static_cast<int>(event.button.y);
-                if (isPointInRect(mx, my, yesButtonRect)) {
-                    confirmOverwrite = true;
-                    saveFile();
-                    running = false;
-                } else if (isPointInRect(mx, my, noButtonRect)) {
-                    showConfirmDialog = false;
-                    running = false;
-                    std::cout << "Save cancelled." << std::endl;
-                }
-            } else if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.key == SDLK_Y) {
-                    confirmOverwrite = true;
-                    saveFile();
-                    running = false;
-                } else if (event.key.key == SDLK_N || 
-                           event.key.key == SDLK_ESCAPE) {
-                    showConfirmDialog = false;
-                    running = false;
-                    std::cout << "Save cancelled." << std::endl;
-                }
-            }
-        }
-        
-        if (needsRedraw) {
-            render();
-            needsRedraw = false;
-        } else {
-            SDL_Delay(1);
-        }
     }
 }

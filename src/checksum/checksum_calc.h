@@ -13,7 +13,6 @@ enum GameMode {
     GAME_POKEMON_GENERATION3
 };
 
-// Structure for Pokemon Red/Blue bank data
 struct RedBlueBankData {
     uint32_t mainSum;
     uint8_t mainChecksum;
@@ -28,7 +27,6 @@ struct RedBlueBankData {
     bool subMatches[6];
 };
 
-// Structure for Pokemon Generation 3 section data
 struct Gen3SectionData {
     uint16_t sectionId;
     uint32_t saveIndex;
@@ -40,11 +38,18 @@ struct Gen3SectionData {
     bool matches;
 };
 
-// Structure for Pokemon Generation 3 save block
 struct Gen3SaveBlock {
     Gen3SectionData sections[14];
     uint32_t saveIndex;
     bool valid;
+};
+
+struct PokemonChecksumResult {
+    size_t location;
+    uint16_t calculated;
+    uint16_t stored;
+    bool valid;
+    std::string locationStr;
 };
 
 class ChecksumCalculator : public SDLAppBase {
@@ -104,10 +109,67 @@ private:
     Gen3SaveBlock gen3SaveA;
     Gen3SaveBlock gen3SaveB;
     bool gen3SaveAIsCurrent;
+
+    // Pokemon checksum mode
+    bool pokemonChecksumMode;
+
+    std::vector<PokemonChecksumResult> pokemonResultsSaveA;
+    std::vector<PokemonChecksumResult> pokemonResultsSaveB;
+
+    // Low-level buffer read/write helpers
+    uint8_t readU8(size_t offset) const;
+    uint16_t readU16LE(size_t offset) const;
+    uint32_t readU32LE(size_t offset) const;
+    void writeU16LE(std::string& buffer, size_t offset, uint16_t value);
+    
+    // Pokemon data structure helpers
+    uint32_t getPID(size_t pokemonBaseAddr) const;
+    uint32_t getOTID(size_t pokemonBaseAddr) const;
+    uint32_t getDecryptionKey(size_t pokemonBaseAddr) const;
+    uint16_t getStoredPokemonChecksum(size_t pokemonBaseAddr) const;
+    uint16_t calculatePokemonDataChecksum(size_t pokemonBaseAddr, uint32_t decryptionKey) const;
+    PokemonChecksumResult calculatePokemonChecksumResult(size_t pokemonBaseAddr, 
+                                                          const std::string& locationStr) const;
+    
+    // Game-specific checksum calculations
+    bool calculateChecksumPokemonRedBlue();
+    bool calculateChecksumPokemonGoldSilver();
+    bool calculateChecksumPokemonCrystal();
+    bool calculateChecksumPokemonGeneration3();
+    
+    uint8_t calculateRedBlue8BitChecksum(size_t start, size_t end, uint32_t& outSum);
+    void calculateRedBlueBankChecksums(size_t baseAddr, RedBlueBankData& bankData);
+    
+    uint16_t calculateGBC16BitChecksum(size_t start, size_t end, uint32_t& outSum);
+    uint16_t calculateGBC16BitChecksumMultiRange(const std::vector<std::pair<size_t, size_t>>& ranges, uint32_t& outSum);
+    
+    uint16_t calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize);
+    void calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBlock& saveBlock, const char* blockName);
+
+    bool calculatePokemonChecksum();
+
+    size_t findSectionOffset(const Gen3SaveBlock& saveBlock, uint16_t sectionId);
+    
+    void calculateAllPokemonChecksums(const Gen3SaveBlock& saveBlock, 
+                                     std::vector<PokemonChecksumResult>& results,
+                                     const std::string& saveBlockName);
+    
+    void calculatePartyPokemonChecksums(const Gen3SaveBlock& saveBlock,
+                                       std::vector<PokemonChecksumResult>& results,
+                                       const std::string& saveBlockName);
+    
+    void calculateBoxPokemonChecksums(const Gen3SaveBlock& saveBlock,
+                                     std::vector<PokemonChecksumResult>& results,
+                                     const std::string& saveBlockName);
+    
+    // Writing and formatting
+    bool writeChecksumsToFile();
+    std::string formatReversedBytes16(uint16_t value);
     
 protected:
     void render() override;
     void handleEvent(SDL_Event& event) override;
+    void update(float deltaTime) override;
     
 public:
     ChecksumCalculator();
@@ -117,35 +179,8 @@ public:
     void setJapanese(bool japanese) { isJapanese = japanese; }
     void setWriteMode(bool write) { shouldWrite = write; }
     void setOverwriteMode(bool overwrite) { shouldOverwrite = overwrite; }
+    void setPokemonMode(bool pokemon) { pokemonChecksumMode = pokemon; }
     bool calculateChecksum();
-    
-private:
-    bool calculateChecksumPokemonRedBlue();
-    bool calculateChecksumPokemonGoldSilver();
-    bool calculateChecksumPokemonCrystal();
-    bool calculateChecksumPokemonGeneration3();
-    
-    // Helper for Red/Blue bank calculations
-    uint8_t calculateRedBlue8BitChecksum(size_t start, size_t end, uint32_t& outSum);
-    void calculateRedBlueBankChecksums(size_t baseAddr, RedBlueBankData& bankData);
-    
-    // Helper for Gold/Silver/Crystal 16-bit calculations
-    uint16_t calculateGBC16BitChecksum(size_t start, size_t end, uint32_t& outSum);
-    uint16_t calculateGBC16BitChecksumMultiRange(const std::vector<std::pair<size_t, size_t>>& ranges, uint32_t& outSum);
-    
-    // Helper for Generation 3 calculations
-    uint16_t calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize);
-    void calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBlock& saveBlock, const char* blockName);
-    
-    // Helper to write checksums to file
-    bool writeChecksumsToFile();
-    
-    // Confirmation dialog for overwrite
-    bool showOverwriteConfirmation();
-    
-    // Helper to display 16-bit value with reversed bytes
-    std::string formatReversedBytes16(uint16_t value);
-    
 };
 
 #endif // CHECKSUM_CALC_H

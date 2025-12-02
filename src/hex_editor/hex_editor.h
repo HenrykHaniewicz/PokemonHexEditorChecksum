@@ -30,7 +30,6 @@ private:
     // Display settings
     static const int ROW_SIZE = 16;
     int headerHeight;
-    int scrollbarWidth;
     int byteGrouping;
     
     // Text encoding
@@ -49,22 +48,6 @@ private:
     int hexX;
     int asciiX;
     int contentEndX;
-    
-    // Scrolling
-    size_t scrollOffset;
-    size_t visibleRows;
-    size_t totalRows;
-    
-    // Momentum scrolling
-    float scrollVelocity;
-    float accumulatedScroll;
-    static constexpr float SCROLL_FRICTION = 0.92f;
-    static constexpr float SCROLL_STOP_THRESHOLD = 0.1f;
-    
-    // Scrollbar dragging
-    bool draggingScrollbar;
-    int dragStartY;
-    float dragStartRatio;
     
     // Zoom functionality
     float zoomLevel;
@@ -92,11 +75,7 @@ private:
     };
     std::vector<EditAction> undoStack;
     
-    // Save dialog
-    bool showConfirmDialog;
-    bool confirmOverwrite;
-    SDL_Rect yesButtonRect;
-    SDL_Rect noButtonRect;
+    // Save button
     SDL_Rect saveButtonRect;
 
     bool overwriteMode;
@@ -113,13 +92,8 @@ private:
     int getByteXPosition(int byteInRow);
     int getHexSectionWidth();
     void renderHeader();
-    void renderConfirmationDialog();
-    void getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight, int& thumbY, int& thumbHeight);
     int getByteIndexFromPosition(int x, int y);
     
-    void scrollBy(int64_t rows);
-    void scrollBySmooth(float rows);
-    void scrollToRatio(float ratio);
     void scrollToAddress(size_t address);
     
     void selectByte(int64_t index);
