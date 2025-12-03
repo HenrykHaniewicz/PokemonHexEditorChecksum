@@ -65,27 +65,27 @@ checksum <file> <game>
 
 ### Mirage Island Modifier
 
-Compute checksum for a file:
+Edit Mirage Island bytes:
 
 ``` sh
 mirageisland <file> <game>
 ```
 
-You can use the `-h` flag with both programs to bring up an extensive usage message.
+You can use the `-h` flag with the programs to bring up an extensive usage message.
 
 ## How to use the Mirage Island modifier
 
-Mirage Island is an elusive place that is essentially governed by two bytes of memory in RAM (.sav file) that are newly generated every day.
-If the bytes do not match up (likely), you will see this when you go to the man in Pacifidlog:
+Mirage Island is an elusive place that is governed by two bytes of memory in RAM (.sav file) that are generated fresh every day.
+If the bytes do not match up (likely), you will see this when you go to the man in Pacifidlog Town:
 
 <p align="center">
   <img src="docs/images/no-mirage-island.png" alt="No Mirage Island">
 </p>
 
 First, you MUST save your game for today BEFORE using the program. The program relies on a newly generated Mirage Island seed.
-By default, the program will save a new file with the suffix `_mirage`. You will need to make sure this save file has the same name as your ROM.
-The `-o` flag will overwrite the current save file you have.
-After running the program with a fresh save for the day, you should see this when you go to Pacifidlog:
+By default, the program will save a new file with the suffix `_mirage`. You will then need to make sure this save file has the same name as your ROM. The `-o` flag will overwrite the current save file you have.
+
+After running the program with a fresh save for the day, you should see this when you go to Pacifidlog Town:
 
 <p align="center">
   <img src="docs/images/yes-mirage-island.png" alt="Yes Mirage Island">
