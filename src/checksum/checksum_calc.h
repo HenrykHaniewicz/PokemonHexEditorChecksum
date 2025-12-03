@@ -3,6 +3,7 @@
 
 #include "../common/sdl_app_base.h"
 #include "../common/hex_utils.h"
+#include "../common/data_utils.h"
 #include <vector>
 #include <cstdint>
 

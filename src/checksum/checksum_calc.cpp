@@ -65,24 +65,19 @@ ChecksumCalculator::ChecksumCalculator()
 // ============================================================================
 
 uint8_t ChecksumCalculator::readU8(size_t offset) const {
-    return static_cast<uint8_t>(fileBuffer[offset]);
+    return DataUtils::readU8(fileBuffer, offset);
 }
 
 uint16_t ChecksumCalculator::readU16LE(size_t offset) const {
-    return static_cast<uint16_t>(readU8(offset)) |
-           (static_cast<uint16_t>(readU8(offset + 1)) << 8);
+    return DataUtils::readU16LE(fileBuffer, offset);
 }
 
 uint32_t ChecksumCalculator::readU32LE(size_t offset) const {
-    return static_cast<uint32_t>(readU8(offset)) |
-           (static_cast<uint32_t>(readU8(offset + 1)) << 8) |
-           (static_cast<uint32_t>(readU8(offset + 2)) << 16) |
-           (static_cast<uint32_t>(readU8(offset + 3)) << 24);
+    return DataUtils::readU32LE(fileBuffer, offset);
 }
 
 void ChecksumCalculator::writeU16LE(std::string& buffer, size_t offset, uint16_t value) {
-    buffer[offset] = static_cast<char>(value & 0xFF);
-    buffer[offset + 1] = static_cast<char>((value >> 8) & 0xFF);
+    DataUtils::writeU16LE(buffer, offset, value);
 }
 
 // ============================================================================
