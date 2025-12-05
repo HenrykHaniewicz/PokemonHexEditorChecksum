@@ -5,7 +5,8 @@ SDLAppBase::SDLAppBase(const std::string& title, int width, int height)
       windowTitle(title),
       windowWidth(width), windowHeight(height),
       charWidth(0), charHeight(0),
-      running(false), needsRedraw(true) {
+      running(false), needsRedraw(true),
+      confirmOnQuit(false) {
 }
 
 SDLAppBase::~SDLAppBase() {
@@ -94,7 +95,14 @@ void SDLAppBase::run() {
         
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                running = false;
+                if (confirmOnQuit) {
+                    if (showQuitConfirmDialog()) {
+                        running = false;
+                    }
+                    // If they said no, just continue running
+                } else {
+                    running = false;
+                }
                 continue;
             }
 
@@ -464,7 +472,7 @@ void SDLAppBase::updateMomentumScroll(float deltaTime) {
 }
 
 // ============================================================================
-// Confirmation Dialog
+// Dialog boxes
 // ============================================================================
 
 bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
@@ -487,6 +495,9 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
         SDL_DestroyWindow(dialogWindow);
         return false;
     }
+    
+    // Make dialog window focused and on top
+    SDL_RaiseWindow(dialogWindow);
     
     int centerX = config.dialogWidth / 2;
     
@@ -529,6 +540,11 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
                         dialogRunning = false;
                         result = false;
                     }
+                }
+            } else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                // If dialog loses focus, bring it back
+                if (event.window.windowID == SDL_GetWindowID(dialogWindow)) {
+                    SDL_RaiseWindow(dialogWindow);
                 }
             }
         }
@@ -585,5 +601,35 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
     SDL_DestroyRenderer(dialogRenderer);
     SDL_DestroyWindow(dialogWindow);
     
+    // Restore focus to main window
+    SDL_RaiseWindow(window);
+    
+    // Force a redraw of the main window
+    needsRedraw = true;
+    
     return result;
+}
+
+// ============================================================================
+// Dialog box settings
+// ============================================================================
+
+bool SDLAppBase::showOverwriteConfirmDialog(const std::string& filename) {
+    ConfirmDialogConfig config;
+    config.message1 = "Overwrite this file?";
+    config.message2 = filename;
+    config.yesText = "YES (Y)";
+    config.noText = "NO (N)";
+    
+    return showConfirmDialog(config);
+}
+
+bool SDLAppBase::showQuitConfirmDialog() {
+    ConfirmDialogConfig config;
+    config.message1 = "Are you sure you want to quit?";
+    config.message2 = "Any unsaved changes will be lost.";
+    config.yesText = "QUIT (Y)";
+    config.noText = "CANCEL (N)";
+    
+    return showConfirmDialog(config);
 }

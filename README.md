@@ -15,7 +15,7 @@ that automate data extraction, transformation, and patch generation.
 make
 ```
 
-Both tools require `SDL3` and `SDL3_ttf` to be installed on your system in order to compile (edit Makefile as necessary).
+All tools require `SDL3` and `SDL3_ttf` to be installed on your system in order to compile (edit Makefile as necessary).
 
 ### Install
 

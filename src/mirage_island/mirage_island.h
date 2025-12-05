@@ -4,6 +4,7 @@
 #include "../common/sdl_app_base.h"
 #include "../common/hex_utils.h"
 #include "../common/data_utils.h"
+#include "../common/generation3_utils.h"
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -12,12 +13,6 @@ enum MirageIslandGame {
     MIRAGE_GAME_RUBY_SAPPHIRE,
     MIRAGE_GAME_EMERALD,
     MIRAGE_GAME_INVALID
-};
-
-struct Gen3SectionInfo {
-    uint16_t sectionId;
-    size_t sectionBaseAddress;
-    uint32_t saveIndex;
 };
 
 class MirageIslandEditor : public SDLAppBase {
@@ -38,8 +33,8 @@ private:
     std::string errorMessage;
     
     // Save block info
-    Gen3SectionInfo saveASections[14];
-    Gen3SectionInfo saveBSections[14];
+    Generation3Utils::SectionInfo saveASections[14];
+    Generation3Utils::SectionInfo saveBSections[14];
     uint32_t saveAIndex;
     uint32_t saveBIndex;
     bool saveAIsCurrent;
@@ -68,11 +63,8 @@ private:
     void writeU16LE(std::string& buffer, size_t offset, uint16_t value);
     
     // Section handling
-    void parseSaveBlock(size_t blockBaseAddr, Gen3SectionInfo* sections, uint32_t& saveIndex);
-    size_t findSectionOffset(const Gen3SectionInfo* sections, uint16_t sectionId);
-    
-    // Checksum calculation
-    uint16_t calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize);
+    void parseSaveBlock(size_t blockBaseAddr, Generation3Utils::SectionInfo* sections, uint32_t& saveIndex);
+    size_t findSectionOffset(const Generation3Utils::SectionInfo* sections, uint16_t sectionId);
     
     // Core operations
     bool determineCurrentSave();

@@ -61,6 +61,12 @@ private:
     bool gotoMode;
     std::string gotoAddressInput;
     
+    // Search state
+    bool searchMode;
+    std::string searchInput;
+    std::vector<size_t> searchMatches;
+    size_t currentMatchIndex;
+    
     // Editing state
     int64_t selectedByteIndex;
     std::string editBuffer;
@@ -74,9 +80,6 @@ private:
         char newValue;
     };
     std::vector<EditAction> undoStack;
-    
-    // Save button
-    SDL_Rect saveButtonRect;
 
     bool overwriteMode;
 
@@ -85,6 +88,15 @@ private:
     int64_t selectionStart;
     int64_t selectionEnd;
     
+    // Save button
+    SDL_Rect saveButtonRect;
+    bool saveButtonHovered;
+
+    // Auto-scroll state
+    int autoScrollDirection; // -1 for up, 0 for none, 1 for down
+    float autoScrollTimer;
+    static constexpr float AUTO_SCROLL_DELAY = 0.05f;
+
     // Internal methods
     void updateLayout();
     void updateWindowTitle();
@@ -115,6 +127,9 @@ private:
     void appendHexInput(const std::string& text);
     void handlePaste();
     void handleGotoInput(SDL_Keycode key, Uint16 mod);
+    void handleSearchInput(SDL_Keycode key, Uint16 mod);
+    void updateSearchMatches();
+    void gotoNextMatch();
     void handleTextInput(const char* text);
     void handleMouseDown(int x, int y);
     void handleMouseUp();

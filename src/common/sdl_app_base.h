@@ -93,6 +93,9 @@ protected:
     bool needsRedraw;
     
     ColorScheme colors;
+
+    // Quit confirmation
+    bool confirmOnQuit;
     
     // Scrollbar state
     ScrollbarState scrollbar;
@@ -136,6 +139,10 @@ protected:
     
     // Confirmation dialog utilities
     bool showConfirmDialog(const ConfirmDialogConfig& config);
+
+    // Dialog boxes
+    bool showOverwriteConfirmDialog(const std::string& filename);
+    bool showQuitConfirmDialog();
     
     // Utility functions
     bool isPointInRect(int x, int y, const SDL_Rect& rect);
@@ -156,6 +163,7 @@ public:
     
     void setWindowTitle(const std::string& title);
     void requestRedraw() { needsRedraw = true; }
+    void setConfirmOnQuit(bool confirm) { confirmOnQuit = confirm; }
     void quit() { running = false; }
 };
 

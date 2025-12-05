@@ -12,6 +12,7 @@ BINDIR = $(PREFIX)/bin
 
 # Source files
 COMMON_SRC = $(SRCDIR)/common/sdl_app_base.cpp
+GEN3_SRC = $(SRCDIR)/common/generation3_utils.cpp
 HEX_EDITOR_SRC = $(SRCDIR)/hex_editor/hex_editor.cpp
 CHECKSUM_SRC = $(SRCDIR)/checksum/checksum_calc.cpp
 MIRAGE_ISLAND_SRC = $(SRCDIR)/mirage_island/mirage_island.cpp
@@ -21,6 +22,7 @@ MIRAGE_ISLAND_MAIN = $(SRCDIR)/mirage_island_main.cpp
 
 # Object files
 COMMON_OBJ = $(OBJDIR)/sdl_app_base.o
+GEN3_OBJ = $(OBJDIR)/generation3_utils.o
 HEX_EDITOR_OBJ = $(OBJDIR)/hex_editor.o
 CHECKSUM_OBJ = $(OBJDIR)/checksum_calc.o
 MIRAGE_ISLAND_OBJ = $(OBJDIR)/mirage_island.o
@@ -41,11 +43,11 @@ $(HEX_EDITOR_BIN): $(COMMON_OBJ) $(HEX_EDITOR_OBJ) $(HEX_EDITOR_MAIN_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # Link checksum
-$(CHECKSUM_BIN): $(COMMON_OBJ) $(CHECKSUM_OBJ) $(CHECKSUM_MAIN_OBJ)
+$(CHECKSUM_BIN): $(COMMON_OBJ) $(GEN3_OBJ) $(CHECKSUM_OBJ) $(CHECKSUM_MAIN_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # Link mirageisland
-$(MIRAGE_ISLAND_BIN): $(COMMON_OBJ) $(MIRAGE_ISLAND_OBJ) $(MIRAGE_ISLAND_MAIN_OBJ)
+$(MIRAGE_ISLAND_BIN): $(COMMON_OBJ) $(GEN3_OBJ) $(MIRAGE_ISLAND_OBJ) $(MIRAGE_ISLAND_MAIN_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # Create obj directory
@@ -54,6 +56,10 @@ $(OBJDIR):
 
 # Generic rule for compiling common sources
 $(COMMON_OBJ): $(COMMON_SRC) | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+# Generic rule for compiling generation 3 sources
+$(GEN3_OBJ): $(GEN3_SRC) | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 # Generic rule for compiling hex_editor sources

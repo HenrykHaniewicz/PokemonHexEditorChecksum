@@ -7,24 +7,6 @@
 #include <fstream>
 #include <sys/stat.h>
 
-// Section data sizes for Pokemon Generation 3
-static const size_t GEN3_SECTION_SIZES[14] = {
-    3884,  // ID 0: Trainer info
-    3968,  // ID 1: Team / items
-    3968,  // ID 2: Game State
-    3968,  // ID 3: Misc Data
-    3848,  // ID 4: Rival info
-    3968,  // ID 5: PC buffer A
-    3968,  // ID 6: PC buffer B
-    3968,  // ID 7: PC buffer C
-    3968,  // ID 8: PC buffer D
-    3968,  // ID 9: PC buffer E
-    3968,  // ID 10: PC buffer F
-    3968,  // ID 11: PC buffer G
-    3968,  // ID 12: PC buffer H
-    2000   // ID 13: PC buffer I
-};
-
 // ============================================================================
 // Constructor
 // ============================================================================
@@ -84,37 +66,8 @@ void ChecksumCalculator::writeU16LE(std::string& buffer, size_t offset, uint16_t
 // Pokemon Data Structure Helpers (for Gen 3)
 // ============================================================================
 
-uint32_t ChecksumCalculator::getPID(size_t pokemonBaseAddr) const {
-    return readU32LE(pokemonBaseAddr + 0x00);
-}
-
-uint32_t ChecksumCalculator::getOTID(size_t pokemonBaseAddr) const {
-    return readU32LE(pokemonBaseAddr + 0x04);
-}
-
-uint32_t ChecksumCalculator::getDecryptionKey(size_t pokemonBaseAddr) const {
-    return getPID(pokemonBaseAddr) ^ getOTID(pokemonBaseAddr);
-}
-
-uint16_t ChecksumCalculator::getStoredPokemonChecksum(size_t pokemonBaseAddr) const {
-    return readU16LE(pokemonBaseAddr + 0x1C);
-}
-
 uint16_t ChecksumCalculator::calculatePokemonDataChecksum(size_t pokemonBaseAddr, uint32_t decryptionKey) const {
-    uint32_t sum = 0;
-    
-    // Process 48 bytes (12 words) of encrypted data starting at offset 0x20
-    for (int i = 0; i < 12; i++) {
-        size_t offset = pokemonBaseAddr + 0x20 + (i * 4);
-        uint32_t encryptedWord = readU32LE(offset);
-        uint32_t decryptedWord = encryptedWord ^ decryptionKey;
-        
-        // Sum as two 16-bit values
-        sum += (decryptedWord & 0xFFFF);
-        sum += ((decryptedWord >> 16) & 0xFFFF);
-    }
-    
-    return static_cast<uint16_t>(sum & 0xFFFF);
+    return Generation3Utils::calculatePokemonDataChecksum(fileBuffer, pokemonBaseAddr, decryptionKey);
 }
 
 PokemonChecksumResult ChecksumCalculator::calculatePokemonChecksumResult(
@@ -124,9 +77,9 @@ PokemonChecksumResult ChecksumCalculator::calculatePokemonChecksumResult(
     result.location = pokemonBaseAddr + 0x1C;
     result.locationStr = locationStr;
     
-    uint32_t key = getDecryptionKey(pokemonBaseAddr);
-    result.calculated = calculatePokemonDataChecksum(pokemonBaseAddr, key);
-    result.stored = getStoredPokemonChecksum(pokemonBaseAddr);
+    uint32_t key = Generation3Utils::getDecryptionKey(fileBuffer, pokemonBaseAddr);
+    result.calculated = Generation3Utils::calculatePokemonDataChecksum(fileBuffer, pokemonBaseAddr, key);
+    result.stored = Generation3Utils::getStoredPokemonChecksum(fileBuffer, pokemonBaseAddr);
     result.valid = (result.calculated == result.stored);
     
     return result;
@@ -519,17 +472,7 @@ uint16_t ChecksumCalculator::calculateGBC16BitChecksumMultiRange(const std::vect
 }
 
 uint16_t ChecksumCalculator::calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize) {
-    uint32_t sum = 0;
-    
-    for (size_t i = 0; i < dataSize; i += 4) {
-        sum += readU32LE(baseAddr + i);
-    }
-    
-    // Fold to 16-bit: upper + lower
-    uint16_t upper = (sum >> 16) & 0xFFFF;
-    uint16_t lower = sum & 0xFFFF;
-    
-    return upper + lower;
+    return Generation3Utils::calculateSectionChecksum(fileBuffer, baseAddr, dataSize);
 }
 
 void ChecksumCalculator::calculateRedBlueBankChecksums(size_t baseAddr, RedBlueBankData& bankData) {
@@ -623,16 +566,17 @@ void ChecksumCalculator::calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBl
             continue;
         }
         
-        size_t dataSize = GEN3_SECTION_SIZES[sectionId];
-        uint16_t calculatedChecksum = calculateGen3SectionChecksum(sectionBase, dataSize);
+        size_t dataSize = Generation3Utils::GEN3_SECTION_SIZES[sectionId];
+        uint16_t calculatedChecksum = Generation3Utils::calculateSectionChecksum(fileBuffer, sectionBase, dataSize);
         
+        // Populate the common structure
         saveBlock.sections[i].sectionId = sectionId;
         saveBlock.sections[i].saveIndex = saveIndex;
         saveBlock.sections[i].dataSize = dataSize;
+        saveBlock.sections[i].sectionBaseAddress = sectionBase;
         saveBlock.sections[i].calculatedChecksum = calculatedChecksum;
         saveBlock.sections[i].storedChecksum = storedChecksum;
         saveBlock.sections[i].checksumLocation = sectionBase + 0x0FF6;
-        saveBlock.sections[i].sectionBaseAddress = sectionBase;
         saveBlock.sections[i].matches = (calculatedChecksum == storedChecksum);
         
         std::cout << "  Section " << std::dec << std::setw(2) << i 
@@ -649,12 +593,7 @@ void ChecksumCalculator::calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBl
 }
 
 size_t ChecksumCalculator::findSectionOffset(const Gen3SaveBlock& saveBlock, uint16_t sectionId) {
-    for (int i = 0; i < 14; i++) {
-        if (saveBlock.sections[i].sectionId == sectionId) {
-            return saveBlock.sections[i].sectionBaseAddress;
-        }
-    }
-    return static_cast<size_t>(-1);
+    return Generation3Utils::findSectionOffset(saveBlock.sections, sectionId);
 }
 
 void ChecksumCalculator::calculatePartyPokemonChecksums(const Gen3SaveBlock& saveBlock,
@@ -898,12 +837,7 @@ bool ChecksumCalculator::writeChecksumsToFile() {
     std::string outputFile;
     
     if (shouldOverwrite) {
-        ConfirmDialogConfig config;
-        config.title = "WARNING";
-        config.message1 = "Overwrite this file?";
-        config.message2 = HexUtils::getBaseName(fileName);
-        
-        if (!showConfirmDialog(config)) {
+        if (!showOverwriteConfirmDialog(HexUtils::getBaseName(fileName))) {
             std::cout << "\nOverwrite cancelled. Exiting program." << std::endl;
             return false;
         }

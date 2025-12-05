@@ -4,6 +4,7 @@
 #include "../common/sdl_app_base.h"
 #include "../common/hex_utils.h"
 #include "../common/data_utils.h"
+#include "../common/generation3_utils.h"
 #include <vector>
 #include <cstdint>
 
@@ -28,19 +29,8 @@ struct RedBlueBankData {
     bool subMatches[6];
 };
 
-struct Gen3SectionData {
-    uint16_t sectionId;
-    uint32_t saveIndex;
-    size_t dataSize;
-    uint16_t calculatedChecksum;
-    uint16_t storedChecksum;
-    size_t checksumLocation;
-    size_t sectionBaseAddress;
-    bool matches;
-};
-
 struct Gen3SaveBlock {
-    Gen3SectionData sections[14];
+    Generation3Utils::SectionInfo sections[14];
     uint32_t saveIndex;
     bool valid;
 };
@@ -124,13 +114,8 @@ private:
     void writeU16LE(std::string& buffer, size_t offset, uint16_t value);
     
     // Pokemon data structure helpers
-    uint32_t getPID(size_t pokemonBaseAddr) const;
-    uint32_t getOTID(size_t pokemonBaseAddr) const;
-    uint32_t getDecryptionKey(size_t pokemonBaseAddr) const;
-    uint16_t getStoredPokemonChecksum(size_t pokemonBaseAddr) const;
     uint16_t calculatePokemonDataChecksum(size_t pokemonBaseAddr, uint32_t decryptionKey) const;
-    PokemonChecksumResult calculatePokemonChecksumResult(size_t pokemonBaseAddr, 
-                                                          const std::string& locationStr) const;
+    PokemonChecksumResult calculatePokemonChecksumResult(size_t pokemonBaseAddr, const std::string& locationStr) const;
     
     // Game-specific checksum calculations
     bool calculateChecksumPokemonRedBlue();

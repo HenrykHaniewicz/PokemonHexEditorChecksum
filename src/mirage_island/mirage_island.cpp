@@ -7,24 +7,6 @@
 #include <fstream>
 #include <sys/stat.h>
 
-// Section data sizes for Pokemon Generation 3
-static const size_t GEN3_SECTION_SIZES[14] = {
-    3884,  // ID 0: Trainer info
-    3968,  // ID 1: Team / items
-    3968,  // ID 2: Game State
-    3968,  // ID 3: Misc Data
-    3848,  // ID 4: Rival info
-    3968,  // ID 5: PC buffer A
-    3968,  // ID 6: PC buffer B
-    3968,  // ID 7: PC buffer C
-    3968,  // ID 8: PC buffer D
-    3968,  // ID 9: PC buffer E
-    3968,  // ID 10: PC buffer F
-    3968,  // ID 11: PC buffer G
-    3968,  // ID 12: PC buffer H
-    2000   // ID 13: PC buffer I
-};
-
 // Mirage Island random number offsets within Section 2
 static const size_t MIRAGE_OFFSET_EMERALD = 0x464;
 static const size_t MIRAGE_OFFSET_RUBY_SAPPHIRE = 0x408;
@@ -90,42 +72,24 @@ void MirageIslandEditor::writeU16LE(std::string& buffer, size_t offset, uint16_t
 // Section Handling
 // ============================================================================
 
-void MirageIslandEditor::parseSaveBlock(size_t blockBaseAddr, Gen3SectionInfo* sections, uint32_t& saveIndex) {
+void MirageIslandEditor::parseSaveBlock(size_t blockBaseAddr, Generation3Utils::SectionInfo* sections, uint32_t& saveIndex) {
     for (int i = 0; i < 14; i++) {
         size_t sectionBase = blockBaseAddr + (i * 0x1000);
         
         sections[i].sectionId = readU16LE(sectionBase + 0x0FF4);
         sections[i].sectionBaseAddress = sectionBase;
         sections[i].saveIndex = readU32LE(sectionBase + 0x0FFC);
+        // Initialize other fields as needed
+        sections[i].dataSize = Generation3Utils::GEN3_SECTION_SIZES[sections[i].sectionId];
+        sections[i].storedChecksum = readU16LE(sectionBase + 0x0FF6);
+        sections[i].checksumLocation = sectionBase + 0x0FF6;
     }
     
     saveIndex = sections[13].saveIndex;
 }
 
-size_t MirageIslandEditor::findSectionOffset(const Gen3SectionInfo* sections, uint16_t sectionId) {
-    for (int i = 0; i < 14; i++) {
-        if (sections[i].sectionId == sectionId) {
-            return sections[i].sectionBaseAddress;
-        }
-    }
-    return static_cast<size_t>(-1);
-}
-
-// ============================================================================
-// Checksum Calculation
-// ============================================================================
-
-uint16_t MirageIslandEditor::calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize) {
-    uint32_t sum = 0;
-    
-    for (size_t i = 0; i < dataSize; i += 4) {
-        sum += readU32LE(baseAddr + i);
-    }
-    
-    uint16_t upper = (sum >> 16) & 0xFFFF;
-    uint16_t lower = sum & 0xFFFF;
-    
-    return upper + lower;
+size_t MirageIslandEditor::findSectionOffset(const Generation3Utils::SectionInfo* sections, uint16_t sectionId) {
+    return Generation3Utils::findSectionOffset(sections, sectionId);
 }
 
 // ============================================================================
@@ -180,7 +144,7 @@ bool MirageIslandEditor::determineCurrentSave() {
 }
 
 bool MirageIslandEditor::performMirageIslandEdit() {
-    const Gen3SectionInfo* currentSections = saveAIsCurrent ? saveASections : saveBSections;
+    const Generation3Utils::SectionInfo* currentSections = saveAIsCurrent ? saveASections : saveBSections;
     
     section1Offset = findSectionOffset(currentSections, 1);
     section2Offset = findSectionOffset(currentSections, 2);
@@ -235,7 +199,7 @@ bool MirageIslandEditor::performMirageIslandEdit() {
     checksumOffset = section2Offset + 0x0FF6;
     originalChecksum = readU16LE(checksumOffset);
     
-    newChecksum = calculateGen3SectionChecksum(section2Offset, GEN3_SECTION_SIZES[2]);
+    newChecksum = Generation3Utils::calculateSectionChecksum(fileBuffer, section2Offset, Generation3Utils::GEN3_SECTION_SIZES[2]);
     
     std::cout << "\nSection 2 checksum location: 0x" << HexUtils::toHexString(checksumOffset, 5) << std::endl;
     std::cout << "Original checksum: 0x" << HexUtils::toHexString(originalChecksum, 4)

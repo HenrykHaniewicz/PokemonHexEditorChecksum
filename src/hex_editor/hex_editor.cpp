@@ -15,9 +15,13 @@ HexEditor::HexEditor()
       addressX(10), hexX(0), asciiX(0), contentEndX(0),
       zoomLevel(1.0f), targetZoomLevel(1.0f),
       gotoMode(false),
+      searchMode(false),
+      currentMatchIndex(0),
       selectedByteIndex(-1), hasUnsavedChanges(false),
       overwriteMode(false),
-      isSelecting(false), selectionStart(-1), selectionEnd(-1) {
+      isSelecting(false), selectionStart(-1), selectionEnd(-1),
+      saveButtonHovered(false),
+      autoScrollDirection(0), autoScrollTimer(0.0f) {
 }
 
 void HexEditor::setTextEncoding(TextEncoding encoding) {
@@ -133,6 +137,10 @@ bool HexEditor::loadFile(const char* filename) {
     selectedByteIndex = -1;
     zoomLevel = 1.0f;
     targetZoomLevel = 1.0f;
+    searchMode = false;
+    searchInput.clear();
+    searchMatches.clear();
+    currentMatchIndex = 0;
     needsRedraw = true;
     
     baseCharWidth = charWidth;
@@ -140,6 +148,7 @@ bool HexEditor::loadFile(const char* filename) {
     
     recalculateLayoutForZoom();
     updateWindowTitle();
+    setConfirmOnQuit(false);
     
     return true;
 }
@@ -231,6 +240,38 @@ void HexEditor::update(float deltaTime) {
         needsUpdate = true;
     }
     
+    // Handle auto-scrolling when selecting at edges
+    if (isSelecting && autoScrollDirection != 0) {
+        autoScrollTimer += deltaTime;
+        if (autoScrollTimer >= AUTO_SCROLL_DELAY) {
+            if (autoScrollDirection < 0 && scrollbar.offset > 0) {
+                scrollBy(-1);
+                
+                // Extend selection to newly visible bytes at the top
+                size_t firstVisibleByte = scrollbar.offset * ROW_SIZE;
+                if (firstVisibleByte < static_cast<size_t>(selectionStart)) {
+                    selectionEnd = static_cast<int64_t>(firstVisibleByte);
+                }
+                
+                needsUpdate = true;
+            } else if (autoScrollDirection > 0 && scrollbar.canScroll() && scrollbar.offset < scrollbar.maxOffset()) {
+                scrollBy(1);
+                
+                // Extend selection to newly visible bytes at the bottom
+                size_t lastVisibleByte = std::min(
+                    (scrollbar.offset + scrollbar.visibleItems) * ROW_SIZE - 1,
+                    fileSize - 1
+                );
+                if (lastVisibleByte > static_cast<size_t>(selectionStart)) {
+                    selectionEnd = static_cast<int64_t>(lastVisibleByte);
+                }
+                
+                needsUpdate = true;
+            }
+            autoScrollTimer = 0.0f;
+        }
+    }
+    
     // Let base class handle momentum scrolling
     SDLAppBase::update(deltaTime);
     
@@ -313,6 +354,7 @@ void HexEditor::updateModifiedState(size_t index) {
 
     hasUnsavedChanges = !modifiedBytes.empty();
     updateWindowTitle();
+    setConfirmOnQuit(hasUnsavedChanges);
 }
 
 void HexEditor::handleEditInput(char c) {
@@ -352,16 +394,8 @@ bool HexEditor::saveFile() {
     
     // Check if file exists and show confirmation dialog
     if (fileExists(outputPath)) {
-        ConfirmDialogConfig config;
-        config.title = "WARNING";
-        if (overwriteMode) {
-            config.message1 = "Overwrite this file?";
-        } else {
-            config.message1 = "File already exists in 'edited_files'.";
-        }
-        config.message2 = HexUtils::getBaseName(outputPath);
-        
-        if (!showConfirmDialog(config)) {
+        std::string displayName = HexUtils::getBaseName(outputPath);
+        if (!showOverwriteConfirmDialog(displayName)) {
             std::cout << "Save cancelled." << std::endl;
             return false;
         }
@@ -380,6 +414,7 @@ bool HexEditor::saveFile() {
     modifiedBytes.clear();
     hasUnsavedChanges = false;
     updateWindowTitle();
+    setConfirmOnQuit(false);
     needsRedraw = true;
     
     std::cout << "Saved to: " << outputPath << std::endl;
@@ -453,6 +488,13 @@ void HexEditor::handlePaste() {
             
             if (gotoMode) {
                 appendHexInput(text);
+            } else if (searchMode) {
+                for (char c : text) {
+                    if (HexUtils::isHexDigit(c)) {
+                        searchInput += HexUtils::toUpperHex(c);
+                    }
+                }
+                updateSearchMatches();
             } else if (selectedByteIndex >= 0) {
                 for (char c : text) {
                     if (HexUtils::isHexDigit(c)) {
@@ -465,7 +507,101 @@ void HexEditor::handlePaste() {
     }
 }
 
+void HexEditor::updateSearchMatches() {
+    searchMatches.clear();
+    currentMatchIndex = 0;
+    
+    if (searchInput.empty() || searchInput.length() % 2 != 0) {
+        needsRedraw = true;
+        return;
+    }
+    
+    // Convert search input to bytes
+    std::vector<unsigned char> searchBytes;
+    for (size_t i = 0; i < searchInput.length(); i += 2) {
+        std::string byteStr = searchInput.substr(i, 2);
+        unsigned char byte = static_cast<unsigned char>(std::stoul(byteStr, nullptr, 16));
+        searchBytes.push_back(byte);
+    }
+    
+    if (searchBytes.empty()) {
+        needsRedraw = true;
+        return;
+    }
+    
+    // Search through the file buffer
+    for (size_t i = 0; i <= fileSize - searchBytes.size(); i++) {
+        bool match = true;
+        for (size_t j = 0; j < searchBytes.size(); j++) {
+            if (static_cast<unsigned char>(fileBuffer[i + j]) != searchBytes[j]) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            searchMatches.push_back(i);
+        }
+    }
+    
+    needsRedraw = true;
+}
+
+void HexEditor::gotoNextMatch() {
+    if (searchMatches.empty()) {
+        return;
+    }
+    
+    size_t matchAddr = searchMatches[currentMatchIndex];
+    scrollToAddress(matchAddr);
+    selectByte(static_cast<int64_t>(matchAddr));
+    
+    // Move to next match for next time
+    currentMatchIndex = (currentMatchIndex + 1) % searchMatches.size();
+    
+    needsRedraw = true;
+}
+
+void HexEditor::handleSearchInput(SDL_Keycode key, Uint16 mod) {
+    // Check for save command first
+    if (key == SDLK_S && (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        saveFile();
+        return;
+    }
+    
+    if (key == SDLK_V && (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        handlePaste();
+        return;
+    }
+    
+    if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+        gotoNextMatch();
+        return;
+    } else if (key == SDLK_ESCAPE) {
+        searchMode = false;
+        searchInput.clear();
+        searchMatches.clear();
+        currentMatchIndex = 0;
+    } else if (key == SDLK_BACKSPACE) {
+        if (!searchInput.empty()) {
+            searchInput.pop_back();
+            updateSearchMatches();
+        }
+    } else if (key == SDLK_G && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        // Switch to goto mode only if not a command
+        searchMode = false;
+        gotoMode = true;
+        gotoAddressInput.clear();
+    }
+    needsRedraw = true;
+}
+
 void HexEditor::handleGotoInput(SDL_Keycode key, Uint16 mod) {
+    // Check for save command first
+    if (key == SDLK_S && (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        saveFile();
+        return;
+    }
+    
     if (key == SDLK_V && (mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
         handlePaste();
         return;
@@ -486,6 +622,13 @@ void HexEditor::handleGotoInput(SDL_Keycode key, Uint16 mod) {
         if (!gotoAddressInput.empty()) {
             gotoAddressInput.pop_back();
         }
+    } else if (key == SDLK_S && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
+        // Switch to search mode only if not a command
+        gotoMode = false;
+        searchMode = true;
+        searchInput.clear();
+        searchMatches.clear();
+        currentMatchIndex = 0;
     }
     needsRedraw = true;
 }
@@ -493,6 +636,14 @@ void HexEditor::handleGotoInput(SDL_Keycode key, Uint16 mod) {
 void HexEditor::handleTextInput(const char* text) {
     if (gotoMode) {
         appendHexInput(text);
+        needsRedraw = true;
+    } else if (searchMode) {
+        for (const char* c = text; *c; c++) {
+            if (HexUtils::isHexDigit(*c)) {
+                searchInput += HexUtils::toUpperHex(*c);
+            }
+        }
+        updateSearchMatches();
         needsRedraw = true;
     } else if (selectedByteIndex >= 0) {
         for (const char* c = text; *c; c++) {
@@ -506,6 +657,10 @@ void HexEditor::handleMouseDown(int x, int y) {
         saveFile();
         return;
     }
+    
+    // Reset auto-scroll state when starting new selection
+    autoScrollDirection = 0;
+    autoScrollTimer = 0.0f;
     
     // Check scrollbar
     if (handleScrollbarClick(x, y)) {
@@ -540,6 +695,8 @@ void HexEditor::handleMouseUp() {
     
     if (isSelecting) {
         isSelecting = false;
+        autoScrollDirection = 0;
+        autoScrollTimer = 0.0f;
         needsRedraw = true;
     }
 }
@@ -550,7 +707,27 @@ void HexEditor::handleMouseMotion(int x, int y) {
         return;
     }
     
+    // Check if mouse is over save button
+    bool wasHovered = saveButtonHovered;
+    saveButtonHovered = isPointInRect(x, y, saveButtonRect);
+    if (wasHovered != saveButtonHovered) {
+        needsRedraw = true;
+    }
+    
     if (isSelecting) {
+        int contentY = headerHeight + 5 + effectiveCharHeight;
+        
+        // Update auto-scroll direction based on mouse position
+        if (y < contentY && scrollbar.offset > 0) {
+            autoScrollDirection = -1; // Scroll up
+        } else if (y > windowHeight - effectiveCharHeight && 
+                   scrollbar.canScroll() && 
+                   scrollbar.offset < scrollbar.maxOffset()) {
+            autoScrollDirection = 1; // Scroll down
+        } else {
+            autoScrollDirection = 0; // No auto-scroll
+        }
+        
         int byteIndex = getByteIndexFromPosition(x, y);
         if (byteIndex >= 0 && byteIndex != selectionEnd) {
             selectionEnd = byteIndex;
@@ -666,6 +843,14 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
             gotoAddressInput.clear();
             needsRedraw = true;
             break;
+        case SDLK_S:
+            // Enter search mode (without Cmd/Ctrl modifier - that's handled above for save)
+            searchMode = true;
+            searchInput.clear();
+            searchMatches.clear();
+            currentMatchIndex = 0;
+            needsRedraw = true;
+            break;
         case SDLK_ESCAPE:
             if (hasSelection()) {
                 clearSelection();
@@ -675,12 +860,24 @@ void HexEditor::handleKeyDown(SDL_Keycode key, Uint16 mod) {
                 editBuffer.clear();
                 needsRedraw = true;
             } else {
-                quit();
+                if (hasUnsavedChanges) {
+                    if (showQuitConfirmDialog()) {
+                        quit();
+                    }
+                } else {
+                    quit();
+                }
             }
             break;
         case SDLK_Q:
             if (selectedByteIndex < 0) {
-                quit();
+                if (hasUnsavedChanges) {
+                    if (showQuitConfirmDialog()) {
+                        quit();
+                    }
+                } else {
+                    quit();
+                }
             }
             break;
         case SDLK_BACKSPACE:
@@ -725,6 +922,8 @@ void HexEditor::handleEvent(SDL_Event& event) {
         case SDL_EVENT_KEY_DOWN:
             if (gotoMode) {
                 handleGotoInput(event.key.key, event.key.mod);
+            } else if (searchMode) {
+                handleSearchInput(event.key.key, event.key.mod);
             } else {
                 handleKeyDown(event.key.key, event.key.mod);
             }
@@ -778,7 +977,19 @@ void HexEditor::renderHeader() {
     int rightX = windowWidth - scrollbar.width;
     
     saveButtonRect = {rightX - 180, 10, 50, charHeight + 6};
-    renderButton(saveButtonRect, "Save");
+    
+    // Render button with hover effect
+    if (saveButtonHovered) {
+        // Draw a slightly larger/brighter button when hovered
+        SDL_Rect hoverRect = {saveButtonRect.x - 1, saveButtonRect.y - 1, 
+                              saveButtonRect.w + 2, saveButtonRect.h + 2};
+        renderFilledRect(hoverRect, {80, 80, 80, 255});
+        renderButton(saveButtonRect, "Save");
+        // Add a subtle glow effect
+        renderOutlineRect(hoverRect, colors.accent);
+    } else {
+        renderButton(saveButtonRect, "Save");
+    }
     
     if (gotoMode) {
         SDL_Rect inputRect = {rightX - 120, 8, 115, charHeight + 8};
@@ -786,8 +997,41 @@ void HexEditor::renderHeader() {
         
         std::string prompt = "0x" + gotoAddressInput + "_";
         renderText(prompt, rightX - 115, 10, colors.accent);
+    } else if (searchMode) {
+        // Search bar - same size as goto bar
+        SDL_Rect inputRect = {rightX - 120, 8, 115, charHeight + 8};
+        renderFilledRect(inputRect, colors.inputBg);
+        
+        // Calculate how many characters can fit in the search bar
+        int availableWidth = 105; // 115 - 10 (5px padding on each side)
+        int prefixWidth = charWidth * 2; // "S:"
+        
+        // Build match count string
+        std::string matchStr;
+        if (!searchInput.empty() && searchInput.length() % 2 == 0) {
+            size_t numMatches = searchMatches.size();
+            if (numMatches > 99) {
+                matchStr = "(99+)";
+            } else {
+                matchStr = "(" + std::to_string(numMatches) + ")";
+            }
+        }
+        int matchWidth = static_cast<int>(matchStr.length()) * charWidth;
+        int cursorWidth = charWidth; // "_"
+        
+        int inputAvailableWidth = availableWidth - prefixWidth - matchWidth - cursorWidth;
+        int maxVisibleChars = std::max(0, inputAvailableWidth / charWidth);
+        
+        // If input is longer than available space, show the end of it
+        std::string visibleInput = searchInput;
+        if (static_cast<int>(searchInput.length()) > maxVisibleChars && maxVisibleChars > 0) {
+            visibleInput = searchInput.substr(searchInput.length() - maxVisibleChars);
+        }
+        
+        std::string displayStr = "S:" + visibleInput + "_" + matchStr;
+        renderText(displayStr, rightX - 115, 10, colors.accent);
     } else {
-        renderText("G:Goto", rightX - 60, 18, colors.textDim);
+        renderText("G:Goto S:Search", rightX - 120, 18, colors.textDim);
     }
     
     renderLine(0, headerHeight - 1, windowWidth, headerHeight - 1, {60, 60, 60, 255});
@@ -831,6 +1075,17 @@ void HexEditor::render() {
         getSelectionRange(selStart, selEnd);
     }
     
+    // Build a set of search match positions for highlighting
+    std::set<size_t> searchMatchPositions;
+    if (searchMode && !searchMatches.empty() && searchInput.length() >= 2) {
+        size_t matchLen = searchInput.length() / 2;
+        for (size_t matchAddr : searchMatches) {
+            for (size_t j = 0; j < matchLen; j++) {
+                searchMatchPositions.insert(matchAddr + j);
+            }
+        }
+    }
+    
     for (size_t row = 0; row < scrollbar.visibleItems && (scrollbar.offset + row) < scrollbar.totalItems; row++) {
         size_t currentRow = scrollbar.offset + row;
         size_t address = currentRow * ROW_SIZE;
@@ -852,9 +1107,17 @@ void HexEditor::render() {
                                    static_cast<int64_t>(byteIndex) >= selStart && 
                                    static_cast<int64_t>(byteIndex) <= selEnd);
                 
-                if (inSelection || static_cast<int64_t>(byteIndex) == selectedByteIndex) {
+                bool inSearchMatch = searchMatchPositions.count(byteIndex) > 0;
+                
+                if (static_cast<int64_t>(byteIndex) == selectedByteIndex) {
                     SDL_Rect selectRect = {byteX, y, effectiveCharWidth * 2, effectiveCharHeight};
                     renderFilledRect(selectRect, colors.selectedBg);
+                } else if (inSelection) {
+                    SDL_Rect selectRect = {byteX, y, effectiveCharWidth * 2, effectiveCharHeight};
+                    renderFilledRect(selectRect, colors.selectedBg);
+                } else if (inSearchMatch) {
+                    SDL_Rect highlightRect = {byteX, y, effectiveCharWidth * 2, effectiveCharHeight};
+                    renderFilledRect(highlightRect, {80, 80, 0, 255}); // Yellow-ish highlight for search matches
                 }
                 
                 unsigned char byte = fileBuffer[byteIndex];
