@@ -548,7 +548,7 @@ void ChecksumCalculator::calculateRedBlueBankChecksums(size_t baseAddr, RedBlueB
     }
 }
 
-void ChecksumCalculator::calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBlock& saveBlock, const char* blockName) {
+void ChecksumCalculator::calculateGen3SaveBlock(size_t blockBaseAddr, Generation3Utils::SaveBlock& saveBlock, const char* blockName) {
     std::cout << "\n--- " << blockName << " (base 0x" << HexUtils::toHexString(blockBaseAddr, 5) << ") ---" << std::endl;
     
     saveBlock.valid = true;
@@ -592,11 +592,11 @@ void ChecksumCalculator::calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBl
     std::cout << "  Save Index: " << std::dec << saveBlock.saveIndex << std::endl;
 }
 
-size_t ChecksumCalculator::findSectionOffset(const Gen3SaveBlock& saveBlock, uint16_t sectionId) {
+size_t ChecksumCalculator::findSectionOffset(const Generation3Utils::SaveBlock& saveBlock, uint16_t sectionId) {
     return Generation3Utils::findSectionOffset(saveBlock.sections, sectionId);
 }
 
-void ChecksumCalculator::calculatePartyPokemonChecksums(const Gen3SaveBlock& saveBlock,
+void ChecksumCalculator::calculatePartyPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
                                                        std::vector<PokemonChecksumResult>& results,
                                                        const std::string& saveBlockName) {
     size_t sectionOffset = findSectionOffset(saveBlock, 1);
@@ -631,7 +631,7 @@ void ChecksumCalculator::calculatePartyPokemonChecksums(const Gen3SaveBlock& sav
     }
 }
 
-void ChecksumCalculator::calculateBoxPokemonChecksums(const Gen3SaveBlock& saveBlock,
+void ChecksumCalculator::calculateBoxPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
                                                      std::vector<PokemonChecksumResult>& results,
                                                      const std::string& saveBlockName) {
     // Build data ranges for each section (5-13)
@@ -758,7 +758,7 @@ void ChecksumCalculator::calculateBoxPokemonChecksums(const Gen3SaveBlock& saveB
     }
 }
 
-void ChecksumCalculator::calculateAllPokemonChecksums(const Gen3SaveBlock& saveBlock,
+void ChecksumCalculator::calculateAllPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
                                                      std::vector<PokemonChecksumResult>& results,
                                                      const std::string& saveBlockName) {
     results.clear();

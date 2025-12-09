@@ -11,7 +11,7 @@ struct ColorScheme {
     SDL_Color background = {30, 30, 30, 255};
     SDL_Color headerBg = {45, 45, 45, 255};
     SDL_Color text = {200, 200, 200, 255};
-    SDL_Color textDim = {100, 100, 100, 255};
+    SDL_Color textDim = {140, 140, 140, 255};
     SDL_Color accent = {100, 149, 237, 255};
     SDL_Color success = {144, 238, 144, 255};
     SDL_Color warning = {255, 165, 0, 255};

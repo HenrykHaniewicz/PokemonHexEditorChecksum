@@ -1,3 +1,4 @@
+# text_to_bytes_gb.py
 # -*- coding: utf-8 -*-
 
 import argparse
@@ -316,10 +317,354 @@ def decode_bytes(byte_list, reverse_map: dict):
 
 
 # ============================================================
+#  GUI
+# ============================================================
+
+def run_gui():
+    """Launch the PyQt6 GUI for encoding/decoding."""
+    try:
+        from PyQt6.QtWidgets import (
+            QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+            QLabel, QTextEdit, QPushButton, QComboBox, QMessageBox,
+            QCheckBox, QFileDialog
+        )
+        from PyQt6.QtCore import Qt
+    except ImportError:
+        print("Error: PyQt6 is not installed.", file=sys.stderr)
+        print("Please install it with: pip install PyQt6", file=sys.stderr)
+        print()
+        # Show usage
+        parser = create_argument_parser()
+        parser.print_help()
+        sys.exit(1)
+
+    # Color themes for Gen 1 (Red/Blue mix) and Gen 2 (Gold/Silver mix)
+    THEMES = {
+        # Gen 1: Red and Blue gradient theme
+        0: {
+            "name": "Gen 1",
+            "window_bg": "#2D1B4E",           # Deep purple (red+blue mix)
+            "panel_bg": "#3D2B5E",            # Lighter purple
+            "text_bg": "#1A1025",             # Dark purple-black
+            "text_fg": "#E8E0F0",             # Light lavender
+            "button_bg": "#8B2252",           # Deep rose
+            "button_hover": "#A03262",        # Lighter rose
+            "button_pressed": "#6B1242",      # Darker rose
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#6A5ACD",              # Slate blue
+            "label_fg": "#C8B8E8",            # Light purple
+            "combo_bg": "#4D3B6E",            # Medium purple
+            "combo_fg": "#E8E0F0",            # Light lavender
+            "checkbox_fg": "#C8B8E8",         # Light purple
+            "status_fg": "#A898D8",           # Muted purple
+        },
+        # Gen 2: Gold and Silver theme
+        1: {
+            "name": "Gen 2",
+            "window_bg": "#2A2520",           # Dark bronze
+            "panel_bg": "#3A3530",            # Medium bronze
+            "text_bg": "#1A1815",             # Very dark brown
+            "text_fg": "#F0E6D0",             # Cream/ivory
+            "button_bg": "#B8860B",           # Dark goldenrod
+            "button_hover": "#D4A017",        # Brighter gold
+            "button_pressed": "#8B6914",      # Darker gold
+            "button_fg": "#1A1510",           # Near black
+            "accent": "#C0C0C0",              # Silver
+            "label_fg": "#D4C4A8",            # Light tan
+            "combo_bg": "#4A4540",            # Gray-brown
+            "combo_fg": "#F0E6D0",            # Cream
+            "checkbox_fg": "#D4C4A8",         # Light tan
+            "status_fg": "#A89878",           # Muted gold
+        },
+    }
+
+    def get_stylesheet(theme):
+        return f"""
+            QMainWindow, QWidget {{
+                background-color: {theme["window_bg"]};
+            }}
+            QLabel {{
+                color: {theme["label_fg"]};
+                font-weight: bold;
+            }}
+            QTextEdit {{
+                background-color: {theme["text_bg"]};
+                color: {theme["text_fg"]};
+                border: 2px solid {theme["accent"]};
+                border-radius: 5px;
+                padding: 5px;
+                font-family: Consolas, Monaco, monospace;
+                font-size: 11pt;
+            }}
+            QTextEdit:focus {{
+                border: 2px solid {theme["button_bg"]};
+            }}
+            QPushButton {{
+                background-color: {theme["button_bg"]};
+                color: {theme["button_fg"]};
+                border: none;
+                border-radius: 5px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 10pt;
+            }}
+            QPushButton:hover {{
+                background-color: {theme["button_hover"]};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme["button_pressed"]};
+            }}
+            QComboBox {{
+                background-color: {theme["combo_bg"]};
+                color: {theme["combo_fg"]};
+                border: 2px solid {theme["accent"]};
+                border-radius: 5px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }}
+            QComboBox:hover {{
+                border-color: {theme["button_bg"]};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid {theme["combo_fg"]};
+                margin-right: 5px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme["combo_bg"]};
+                color: {theme["combo_fg"]};
+                selection-background-color: {theme["button_bg"]};
+                selection-color: {theme["button_fg"]};
+            }}
+            QCheckBox {{
+                color: {theme["checkbox_fg"]};
+                font-weight: bold;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {theme["accent"]};
+                border-radius: 3px;
+                background-color: {theme["text_bg"]};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {theme["button_bg"]};
+                border-color: {theme["button_bg"]};
+            }}
+            QCheckBox::indicator:hover {{
+                border-color: {theme["button_hover"]};
+            }}
+            #statusLabel {{
+                color: {theme["status_fg"]};
+                font-style: italic;
+            }}
+        """
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("Pokémon Gen 1/2 Text Encoder/Decoder")
+            self.setMinimumSize(600, 450)
+
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            layout = QVBoxLayout(central_widget)
+
+            # Top bar: Region, Game selection, and Load button
+            top_bar_layout = QHBoxLayout()
+
+            # Region dropdown
+            top_bar_layout.addWidget(QLabel("Region:"))
+            self.region_combo = QComboBox()
+            self.region_combo.addItems(["English/Western", "Japanese"])
+            top_bar_layout.addWidget(self.region_combo)
+
+            top_bar_layout.addSpacing(20)
+
+            # Game dropdown
+            top_bar_layout.addWidget(QLabel("Game:"))
+            self.game_combo = QComboBox()
+            self.game_combo.addItems(["Gen 1 (Red/Blue/Yellow)", "Gen 2 (Gold/Silver/Crystal)"])
+            self.game_combo.currentIndexChanged.connect(self.update_theme)
+            top_bar_layout.addWidget(self.game_combo)
+
+            top_bar_layout.addStretch()
+
+            # Load file button
+            self.load_button = QPushButton("Load File...")
+            self.load_button.setToolTip("Load text from a file")
+            self.load_button.clicked.connect(self.load_file)
+            top_bar_layout.addWidget(self.load_button)
+
+            layout.addLayout(top_bar_layout)
+
+            # Text field
+            layout.addWidget(QLabel("Text:"))
+            self.text_field = QTextEdit()
+            self.text_field.setPlaceholderText("Enter text to encode here...")
+            layout.addWidget(self.text_field)
+
+            # Middle section: Encode/Decode buttons
+            middle_layout = QHBoxLayout()
+            middle_layout.addStretch()
+
+            self.encode_button = QPushButton("▼ Encode ▼")
+            self.encode_button.setToolTip("Convert text to bytes")
+            self.encode_button.setMinimumWidth(120)
+            self.encode_button.clicked.connect(self.encode)
+            middle_layout.addWidget(self.encode_button)
+
+            middle_layout.addSpacing(20)
+
+            self.decode_button = QPushButton("▲ Decode ▲")
+            self.decode_button.setToolTip("Convert bytes to text")
+            self.decode_button.setMinimumWidth(120)
+            self.decode_button.clicked.connect(self.decode)
+            middle_layout.addWidget(self.decode_button)
+
+            middle_layout.addStretch()
+            layout.addLayout(middle_layout)
+
+            # Bytes field
+            layout.addWidget(QLabel("Bytes (hex):"))
+            self.bytes_field = QTextEdit()
+            self.bytes_field.setPlaceholderText("Enter hex bytes to decode here (e.g., 87 A4 B2 or 87A4B2)...")
+            layout.addWidget(self.bytes_field)
+
+            # Bottom bar: Options and status
+            bottom_layout = QHBoxLayout()
+
+            # No spaces checkbox
+            self.no_spaces_checkbox = QCheckBox("No spaces between bytes")
+            self.no_spaces_checkbox.setToolTip("Output bytes without spaces (e.g., 87A4B2 instead of 87 A4 B2)")
+            bottom_layout.addWidget(self.no_spaces_checkbox)
+
+            bottom_layout.addStretch()
+
+            # Status label
+            self.status_label = QLabel("")
+            self.status_label.setObjectName("statusLabel")
+            bottom_layout.addWidget(self.status_label)
+
+            layout.addLayout(bottom_layout)
+
+            # Apply initial theme
+            self.update_theme()
+
+        def update_theme(self):
+            """Update the color theme based on selected game."""
+            game_index = self.game_combo.currentIndex()
+            theme = THEMES.get(game_index, THEMES[0])
+            self.setStyleSheet(get_stylesheet(theme))
+
+        def get_current_tables(self):
+            """Get the encoding/decoding tables based on current selection."""
+            is_japanese = self.region_combo.currentIndex() == 1
+            gen = 1 if self.game_combo.currentIndex() == 0 else 2
+            return get_tables(gen, is_japanese)
+
+        def load_file(self):
+            """Load text from a file and put it in both fields."""
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open Text File",
+                "",
+                "Text Files (*.txt);;All Files (*)"
+            )
+
+            if not file_path:
+                return  # User cancelled
+
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Normalize line endings and convert to placeholder
+                content = content.replace("\r\n", "\n").replace("\r", "\n")
+                content_with_placeholders = content.replace("\n", "<0x55>")
+
+                # Put the content in both fields
+                self.text_field.setPlainText(content_with_placeholders)
+                self.bytes_field.setPlainText(content_with_placeholders)
+
+                self.status_label.setText(f"Loaded: {os.path.basename(file_path)}")
+
+            except Exception as e:
+                QMessageBox.warning(self, "File Error", f"Could not read file:\n{e}")
+                self.status_label.setText("File load failed.")
+
+        def encode(self):
+            """Encode text to bytes."""
+            text = self.text_field.toPlainText()
+            if not text:
+                self.status_label.setText("No text to encode.")
+                return
+
+            encode_map, decode_map, is_english = self.get_current_tables()
+
+            try:
+                encoded = encode_text(text, encode_map, is_english=is_english)
+                if self.no_spaces_checkbox.isChecked():
+                    self.bytes_field.setPlainText("".join(encoded))
+                else:
+                    self.bytes_field.setPlainText(" ".join(encoded))
+                self.status_label.setText(f"Encoded {len(text)} characters to {len(encoded)} bytes.")
+            except ValueError as e:
+                QMessageBox.warning(self, "Encoding Error", str(e))
+                self.status_label.setText("Encoding failed.")
+
+        def decode(self):
+            """Decode bytes to text."""
+            bytes_text = self.bytes_field.toPlainText()
+            if not bytes_text:
+                self.status_label.setText("No bytes to decode.")
+                return
+
+            encode_map, decode_map, is_english = self.get_current_tables()
+
+            # Clean up the input - remove all whitespace
+            cleaned = re.sub(r"\s+", "", bytes_text)
+
+            if len(cleaned) % 2 != 0:
+                QMessageBox.warning(
+                    self, "Decoding Error",
+                    "Byte string must have an even number of hex digits."
+                )
+                self.status_label.setText("Decoding failed.")
+                return
+
+            # Validate hex characters
+            if not all(c in '0123456789ABCDEFabcdef' for c in cleaned):
+                QMessageBox.warning(
+                    self, "Decoding Error",
+                    "Byte string contains invalid characters. Use only hex digits (0-9, A-F)."
+                )
+                self.status_label.setText("Decoding failed.")
+                return
+
+            bytes_list = [cleaned[i:i+2] for i in range(0, len(cleaned), 2)]
+            decoded = decode_bytes(bytes_list, decode_map)
+            self.text_field.setPlainText(decoded)
+            self.status_label.setText(f"Decoded {len(bytes_list)} bytes to text.")
+
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+# ============================================================
 #  CLI WITH FILE SUPPORT + NEWLINE SPECIAL CASES
 # ============================================================
 
-def main():
+def create_argument_parser():
+    """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         description="Pokémon Gen 1/2 text encoder/decoder (English & Japanese)"
     )
@@ -348,7 +693,17 @@ def main():
         "-n", action="store_true",
         help="No spaces between output byte values"
     )
+    return parser
 
+
+def main():
+    # Check if any arguments were passed (besides the script name)
+    if len(sys.argv) == 1:
+        # No arguments - launch GUI
+        run_gui()
+        return
+
+    parser = create_argument_parser()
     args = parser.parse_args()
 
     # ------------------------------

@@ -63,4 +63,43 @@ namespace Generation3Utils {
         
         return upper + lower;
     }
+    
+    uint32_t getSecurityKey(const std::string& buffer, int game, size_t section0Offset) {
+        // Ruby/Sapphire: no encryption, return 0
+        if (game == GEN3_GAME_RS) {
+            return 0;
+        }
+        
+        // Emerald: security key at offset 0x00AC in Section 0
+        if (game == GEN3_GAME_EMERALD) {
+            return DataUtils::readU32LE(buffer, section0Offset + GEN3_SECURITY_KEY_OFFSET_E);
+        }
+        
+        // FireRed/LeafGreen: security key at offset 0x0AF8 in Section 0
+        if (game == GEN3_GAME_FRLG) {
+            return DataUtils::readU32LE(buffer, section0Offset + GEN3_SECURITY_KEY_OFFSET_FRLG);
+        }
+        
+        return 0;
+    }
+    
+    uint16_t decryptItemQuantity(uint16_t encryptedQty, int game, uint32_t securityKey) {
+        // Ruby/Sapphire: no encryption
+        if (game == GEN3_GAME_RS) {
+            return encryptedQty;
+        }
+        
+        // Emerald and FRLG: XOR with lower 16 bits of security key
+        return encryptedQty ^ static_cast<uint16_t>(securityKey & 0xFFFF);
+    }
+    
+    uint16_t encryptItemQuantity(uint16_t quantity, int game, uint32_t securityKey) {
+        // Ruby/Sapphire: no encryption
+        if (game == GEN3_GAME_RS) {
+            return quantity;
+        }
+        
+        // Emerald and FRLG: XOR with lower 16 bits of security key
+        return quantity ^ static_cast<uint16_t>(securityKey & 0xFFFF);
+    }
 }

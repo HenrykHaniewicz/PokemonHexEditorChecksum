@@ -418,7 +418,6 @@ static const std::unordered_map<uint8_t, Gen2ItemInfo> GEN2_ITEMS = {
     {0xC0, {"TM02", nullptr, POCKET_TM_HM}},
     {0xC1, {"TM03", nullptr, POCKET_TM_HM}},
     {0xC2, {"TM04", nullptr, POCKET_TM_HM}},
-    {0xC3, {"TM04", nullptr, POCKET_ITEMS}},       // Note: Duplicate TM04 in Items pocket (glitch)
     {0xC4, {"TM05", nullptr, POCKET_TM_HM}},
     {0xC5, {"TM06", nullptr, POCKET_TM_HM}},
     {0xC6, {"TM07", nullptr, POCKET_TM_HM}},
@@ -443,7 +442,6 @@ static const std::unordered_map<uint8_t, Gen2ItemInfo> GEN2_ITEMS = {
     {0xD9, {"TM26", nullptr, POCKET_TM_HM}},
     {0xDA, {"TM27", nullptr, POCKET_TM_HM}},
     {0xDB, {"TM28", nullptr, POCKET_TM_HM}},
-    {0xDC, {"TM28", nullptr, POCKET_ITEMS}},       // Note: Duplicate TM28 in Items pocket (glitch)
     {0xDD, {"TM29", nullptr, POCKET_TM_HM}},
     {0xDE, {"TM30", nullptr, POCKET_TM_HM}},
     {0xDF, {"TM31", nullptr, POCKET_TM_HM}},

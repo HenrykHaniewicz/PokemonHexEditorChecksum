@@ -1,7 +1,7 @@
 # Pokemon Mod Suite
 
 This suite provides tools for inspecting, modifying, and analysing data
-files used in Pokémon games or related ROM-based assets. It includes
+files used in Pokémon games or related ROM/RAM-based assets. It includes
 interactive SDL-based utilities, checksum helpers, and Python scripts
 that automate data extraction, transformation, and patch generation.
 
@@ -63,6 +63,14 @@ Compute checksum for a file:
 checksum <file> <game>
 ```
 
+### Bag Editor
+
+Edit the bag in a save file:
+
+``` sh
+pokemon_bag <file> <game>
+```
+
 ### Mirage Island Modifier
 
 Edit Mirage Island bytes:
@@ -103,7 +111,134 @@ Enjoy the island!
 ## Python Scripts
 
 Two Python utilities are included in the `src/scripts/` directory. These
-scripts translate between byte arrays and specific game encodings if you 
-just need some text converted quickly.
+scripts translate between byte arrays and specific game encodings for
+Pokémon text data. They can be used via command line or through an
+interactive GUI.
 
-These scripts will be added to soon.
+### Text Encoder/Decoder for Game Boy (Gen 1/2)
+
+`text_to_bytes_gb.py` - Handles text encoding for Pokémon Red, Blue,
+Yellow, Gold, Silver, and Crystal.
+
+### Text Encoder/Decoder for GBA (Gen 3)
+
+`text_to_bytes_gba.py` - Handles text encoding for Pokémon Ruby,
+Sapphire, FireRed, LeafGreen, and Emerald.
+
+------------------------------------------------------------------------
+
+### GUI Mode
+
+Both scripts launch a graphical interface by default when run without
+arguments:
+
+``` sh
+python text_to_bytes_gb.py
+python text_to_bytes_gba.py
+```
+
+The GUI provides:
+
+- **Region Selection**: Choose between English/Western or Japanese
+  character sets
+- **Game Selection**: Pick the specific game for accurate encoding
+  tables
+- **Text Field**: Enter human-readable text to encode
+- **Bytes Field**: Enter hex bytes to decode (with or without spaces)
+- **Encode Button**: Convert text → bytes
+- **Decode Button**: Convert bytes → text
+- **Load File Button**: Import text from a `.txt` file (newlines are
+  automatically converted to the appropriate control code placeholder)
+- **No Spaces Checkbox**: Output bytes without separating spaces
+
+**Note**: The GUI requires PyQt6. If not installed, the script will
+display an error message and print the CLI usage information.
+
+``` sh
+pip install PyQt6
+```
+
+------------------------------------------------------------------------
+
+### CLI Mode
+
+Pass any argument to use command-line mode instead of the GUI.
+
+#### Gen 1/2 (Game Boy)
+
+Encode text to bytes:
+
+``` sh
+python text_to_bytes_gb.py "Hello"
+# Output: 87 A4 AB AB AC
+
+python text_to_bytes_gb.py --gen 2 "Hello"
+# Output: 87 A4 AB AB AC
+```
+
+Decode bytes to text:
+
+``` sh
+python text_to_bytes_gb.py -r "87 A4 AB AB AC"
+# Output: Hello
+```
+
+Use Japanese encoding:
+
+``` sh
+python text_to_bytes_gb.py -j "Pokemon"
+```
+
+Encode from a file (newlines become `<0x55>` control codes):
+
+``` sh
+python text_to_bytes_gb.py -f input.txt
+```
+
+Output without spaces between bytes:
+
+``` sh
+python text_to_bytes_gb.py -n "Hello"
+# Output: 87A4ABABAC
+```
+
+#### Gen 3 (GBA)
+
+Encode text to bytes:
+
+``` sh
+python text_to_bytes_gba.py "Hello"
+# Output: C2 D9 E0 E0 E3
+
+python text_to_bytes_gba.py --ruby "Hello"
+python text_to_bytes_gba.py --sapphire "Hello"
+python text_to_bytes_gba.py --fr "Hello"
+python text_to_bytes_gba.py --lg "Hello"
+python text_to_bytes_gba.py --emerald "Hello"
+```
+
+Decode bytes to text:
+
+``` sh
+python text_to_bytes_gba.py -r "C2 D9 E0 E0 E3"
+# Output: Hello
+```
+
+Use Japanese encoding:
+
+``` sh
+python text_to_bytes_gba.py -j --emerald "Pokemon"
+```
+
+Encode from a file (newlines become `<0xFE>` control codes):
+
+``` sh
+python text_to_bytes_gba.py -f input.txt
+```
+
+Output without spaces between bytes:
+
+``` sh
+python text_to_bytes_gba.py -n "Hello"
+# Output: C2D9E0E0E3
+```

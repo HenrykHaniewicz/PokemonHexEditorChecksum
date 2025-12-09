@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -I.
+CXXFLAGS = -std=c++17 -Wall -Wextra -I. -MMD -MP
 LDFLAGS = -lSDL3 -lSDL3_ttf
 
 # Directories
@@ -10,99 +10,91 @@ SRCDIR = src
 PREFIX ?= /usr/local
 BINDIR = $(PREFIX)/bin
 
-# Source files
-COMMON_SRC = $(SRCDIR)/common/sdl_app_base.cpp
-GEN3_SRC = $(SRCDIR)/common/generation3_utils.cpp
-HEX_EDITOR_SRC = $(SRCDIR)/hex_editor/hex_editor.cpp
-CHECKSUM_SRC = $(SRCDIR)/checksum/checksum_calc.cpp
-MIRAGE_ISLAND_SRC = $(SRCDIR)/mirage_island/mirage_island.cpp
-HEX_EDITOR_MAIN = $(SRCDIR)/hex_editor_main.cpp
-CHECKSUM_MAIN = $(SRCDIR)/checksum_main.cpp
-MIRAGE_ISLAND_MAIN = $(SRCDIR)/mirage_island_main.cpp
+# Find all source files automatically
+SRCS := $(shell find $(SRCDIR) -name '*.cpp')
 
-# Object files
-COMMON_OBJ = $(OBJDIR)/sdl_app_base.o
-GEN3_OBJ = $(OBJDIR)/generation3_utils.o
-HEX_EDITOR_OBJ = $(OBJDIR)/hex_editor.o
-CHECKSUM_OBJ = $(OBJDIR)/checksum_calc.o
-MIRAGE_ISLAND_OBJ = $(OBJDIR)/mirage_island.o
-HEX_EDITOR_MAIN_OBJ = $(OBJDIR)/hex_editor_main.o
-CHECKSUM_MAIN_OBJ = $(OBJDIR)/checksum_main.o
-MIRAGE_ISLAND_MAIN_OBJ = $(OBJDIR)/mirage_island_main.o
+# Generate object file names (flatten to obj directory)
+OBJS := $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(subst /,_,$(SRCS:$(SRCDIR)/%=%)))
 
-# Executables
+# Generate dependency file names
+DEPS := $(OBJS:.o=.d)
+
+# Executables and their required objects
 HEX_EDITOR_BIN = hex_editor
 CHECKSUM_BIN = checksum
 MIRAGE_ISLAND_BIN = mirageisland
+POKEMON_BAG_BIN = pokemon_bag
+
+BINS = $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN) $(POKEMON_BAG_BIN)
+
+# Common objects used by multiple targets
+COMMON_OBJS = $(OBJDIR)/common_sdl_app_base.o
+GEN3_OBJS = $(OBJDIR)/common_generation3_utils.o
+
+# Object lists for each executable
+HEX_EDITOR_OBJS = $(COMMON_OBJS) \
+                  $(OBJDIR)/hex_editor_hex_editor.o \
+                  $(OBJDIR)/hex_editor_main.o
+
+CHECKSUM_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+                $(OBJDIR)/checksum_checksum_calc.o \
+                $(OBJDIR)/checksum_main.o
+
+MIRAGE_ISLAND_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+                     $(OBJDIR)/mirage_island_mirage_island.o \
+                     $(OBJDIR)/mirage_island_main.o
+
+POKEMON_BAG_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+                   $(OBJDIR)/pokemon_bag_pokemon_bag.o \
+                   $(OBJDIR)/pokemon_bag_main.o
 
 # Default target
-all: $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN)
-
-# Link hex_editor
-$(HEX_EDITOR_BIN): $(COMMON_OBJ) $(HEX_EDITOR_OBJ) $(HEX_EDITOR_MAIN_OBJ)
-	$(CXX) -o $@ $^ $(LDFLAGS)
-
-# Link checksum
-$(CHECKSUM_BIN): $(COMMON_OBJ) $(GEN3_OBJ) $(CHECKSUM_OBJ) $(CHECKSUM_MAIN_OBJ)
-	$(CXX) -o $@ $^ $(LDFLAGS)
-
-# Link mirageisland
-$(MIRAGE_ISLAND_BIN): $(COMMON_OBJ) $(GEN3_OBJ) $(MIRAGE_ISLAND_OBJ) $(MIRAGE_ISLAND_MAIN_OBJ)
-	$(CXX) -o $@ $^ $(LDFLAGS)
+all: $(BINS)
 
 # Create obj directory
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
 
-# Generic rule for compiling common sources
-$(COMMON_OBJ): $(COMMON_SRC) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+# Generic compilation rule - converts path separators to underscores
+# The VPATH mechanism doesn't work well with flattened output
+define make_obj_rule
+$(OBJDIR)/$(subst /,_,$(1:$(SRCDIR)/%.cpp=%.o)): $(1) | $(OBJDIR)
+	$$(CXX) $$(CXXFLAGS) -c -o $$@ $$<
+endef
 
-# Generic rule for compiling generation 3 sources
-$(GEN3_OBJ): $(GEN3_SRC) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+# Generate a rule for each source file
+$(foreach src,$(SRCS),$(eval $(call make_obj_rule,$(src))))
 
-# Generic rule for compiling hex_editor sources
-$(HEX_EDITOR_OBJ): $(HEX_EDITOR_SRC) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+# Link executables
+$(HEX_EDITOR_BIN): $(HEX_EDITOR_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
-# Generic rule for compiling checksum sources
-$(CHECKSUM_OBJ): $(CHECKSUM_SRC) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(CHECKSUM_BIN): $(CHECKSUM_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
-# Generic rule for compiling mirage island sources
-$(MIRAGE_ISLAND_OBJ): $(MIRAGE_ISLAND_SRC) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(MIRAGE_ISLAND_BIN): $(MIRAGE_ISLAND_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
-# Compile hex_editor main
-$(HEX_EDITOR_MAIN_OBJ): $(HEX_EDITOR_MAIN) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+$(POKEMON_BAG_BIN): $(POKEMON_BAG_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
 
-# Compile mirageisland main
-$(MIRAGE_ISLAND_MAIN_OBJ): $(MIRAGE_ISLAND_MAIN) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-# Compile checksum main
-$(CHECKSUM_MAIN_OBJ): $(CHECKSUM_MAIN) | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+# Include dependency files (if they exist)
+-include $(DEPS)
 
 # Clean build artifacts
 clean:
 	rm -rf $(OBJDIR)
-	rm -f $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN)
+	rm -f $(BINS)
 
 # Rebuild everything
 rebuild: clean all
 
-install: $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN)
+# Installation
+install: $(BINS)
 	mkdir -p $(DESTDIR)$(BINDIR)
-	cp $(HEX_EDITOR_BIN) $(DESTDIR)$(BINDIR)/
-	cp $(CHECKSUM_BIN) $(DESTDIR)$(BINDIR)/
-	cp $(MIRAGE_ISLAND_BIN) $(DESTDIR)$(BINDIR)/
+	cp $(BINS) $(DESTDIR)$(BINDIR)/
 
 uninstall:
-	rm -f $(DESTDIR)$(BINDIR)/$(HEX_EDITOR_BIN)
-	rm -f $(DESTDIR)$(BINDIR)/$(CHECKSUM_BIN)
-	rm -f $(DESTDIR)$(BINDIR)/$(MIRAGE_ISLAND_BIN)
+	$(foreach bin,$(BINS),rm -f $(DESTDIR)$(BINDIR)/$(bin);)
 
-.PHONY: all clean rebuild
+.PHONY: all clean rebuild install uninstall

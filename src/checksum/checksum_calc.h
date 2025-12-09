@@ -29,12 +29,6 @@ struct RedBlueBankData {
     bool subMatches[6];
 };
 
-struct Gen3SaveBlock {
-    Generation3Utils::SectionInfo sections[14];
-    uint32_t saveIndex;
-    bool valid;
-};
-
 struct PokemonChecksumResult {
     size_t location;
     uint16_t calculated;
@@ -97,8 +91,8 @@ private:
     bool crystalChecksum2Matches;
     
     // Pokemon Generation 3 results
-    Gen3SaveBlock gen3SaveA;
-    Gen3SaveBlock gen3SaveB;
+    Generation3Utils::SaveBlock gen3SaveA;
+    Generation3Utils::SaveBlock gen3SaveB;
     bool gen3SaveAIsCurrent;
 
     // Pokemon checksum mode
@@ -130,21 +124,21 @@ private:
     uint16_t calculateGBC16BitChecksumMultiRange(const std::vector<std::pair<size_t, size_t>>& ranges, uint32_t& outSum);
     
     uint16_t calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize);
-    void calculateGen3SaveBlock(size_t blockBaseAddr, Gen3SaveBlock& saveBlock, const char* blockName);
+    void calculateGen3SaveBlock(size_t blockBaseAddr, Generation3Utils::SaveBlock& saveBlock, const char* blockName);
 
     bool calculatePokemonChecksum();
 
-    size_t findSectionOffset(const Gen3SaveBlock& saveBlock, uint16_t sectionId);
+    size_t findSectionOffset(const Generation3Utils::SaveBlock& saveBlock, uint16_t sectionId);
     
-    void calculateAllPokemonChecksums(const Gen3SaveBlock& saveBlock, 
+    void calculateAllPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock, 
                                      std::vector<PokemonChecksumResult>& results,
                                      const std::string& saveBlockName);
     
-    void calculatePartyPokemonChecksums(const Gen3SaveBlock& saveBlock,
+    void calculatePartyPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
                                        std::vector<PokemonChecksumResult>& results,
                                        const std::string& saveBlockName);
     
-    void calculateBoxPokemonChecksums(const Gen3SaveBlock& saveBlock,
+    void calculateBoxPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
                                      std::vector<PokemonChecksumResult>& results,
                                      const std::string& saveBlockName);
     

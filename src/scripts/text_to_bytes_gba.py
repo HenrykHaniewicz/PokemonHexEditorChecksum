@@ -297,10 +297,426 @@ def decode_bytes(byte_list, reverse_map: dict):
 
 
 # ============================================================
+#  GUI
+# ============================================================
+
+def run_gui():
+    """Launch the PyQt6 GUI for encoding/decoding."""
+    try:
+        from PyQt6.QtWidgets import (
+            QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+            QLabel, QTextEdit, QPushButton, QComboBox, QMessageBox,
+            QCheckBox, QFileDialog
+        )
+        from PyQt6.QtCore import Qt
+    except ImportError:
+        print("Error: PyQt6 is not installed.", file=sys.stderr)
+        print("Please install it with: pip install PyQt6", file=sys.stderr)
+        print()
+        # Show usage
+        parser = create_argument_parser()
+        parser.print_help()
+        sys.exit(1)
+
+    # Color themes for each Gen 3 game
+    THEMES = {
+        # Ruby - Deep red theme
+        0: {
+            "name": "Ruby",
+            "window_bg": "#2D1518",           # Dark red-brown
+            "panel_bg": "#3D2528",            # Slightly lighter
+            "text_bg": "#1A0D0F",             # Very dark red
+            "text_fg": "#F0D0D0",             # Light pink-white
+            "button_bg": "#A01020",           # Ruby red
+            "button_hover": "#C01830",        # Brighter red
+            "button_pressed": "#801018",      # Darker red
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#E84040",              # Bright red accent
+            "label_fg": "#E0B0B0",            # Pink-ish
+            "combo_bg": "#4D2528",            # Medium dark red
+            "combo_fg": "#F0D0D0",            # Light pink
+            "checkbox_fg": "#E0B0B0",         # Pink-ish
+            "status_fg": "#C09090",           # Muted pink
+        },
+        # Sapphire - Deep blue theme
+        1: {
+            "name": "Sapphire",
+            "window_bg": "#151828",           # Dark blue
+            "panel_bg": "#252838",            # Slightly lighter blue
+            "text_bg": "#0D1018",             # Very dark blue
+            "text_fg": "#D0D8F0",             # Light blue-white
+            "button_bg": "#1040A0",           # Sapphire blue
+            "button_hover": "#1850C0",        # Brighter blue
+            "button_pressed": "#103080",      # Darker blue
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#4080E8",              # Bright blue accent
+            "label_fg": "#B0B8E0",            # Light blue
+            "combo_bg": "#25284D",            # Medium dark blue
+            "combo_fg": "#D0D8F0",            # Light blue
+            "checkbox_fg": "#B0B8E0",         # Light blue
+            "status_fg": "#9098C0",           # Muted blue
+        },
+        # FireRed - Orange-red fire theme
+        2: {
+            "name": "FireRed",
+            "window_bg": "#2D1A10",           # Dark brown-orange
+            "panel_bg": "#3D2A18",            # Slightly lighter
+            "text_bg": "#1A0F08",             # Very dark brown
+            "text_fg": "#F0E0D0",             # Warm white
+            "button_bg": "#D04010",           # Fire orange
+            "button_hover": "#E85020",        # Brighter orange
+            "button_pressed": "#A03010",      # Darker orange
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#FF6030",              # Bright orange accent
+            "label_fg": "#E0C8B0",            # Warm tan
+            "combo_bg": "#4D3020",            # Medium brown
+            "combo_fg": "#F0E0D0",            # Warm white
+            "checkbox_fg": "#E0C8B0",         # Warm tan
+            "status_fg": "#C0A080",           # Muted tan
+        },
+        # LeafGreen - Fresh green theme
+        3: {
+            "name": "LeafGreen",
+            "window_bg": "#152D18",           # Dark green
+            "panel_bg": "#253D28",            # Slightly lighter green
+            "text_bg": "#0D1A0F",             # Very dark green
+            "text_fg": "#D0F0D8",             # Light green-white
+            "button_bg": "#208030",           # Leaf green
+            "button_hover": "#30A040",        # Brighter green
+            "button_pressed": "#186028",      # Darker green
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#40E060",              # Bright green accent
+            "label_fg": "#B0E0B8",            # Light green
+            "combo_bg": "#254D28",            # Medium dark green
+            "combo_fg": "#D0F0D8",            # Light green
+            "checkbox_fg": "#B0E0B8",         # Light green
+            "status_fg": "#90C098",           # Muted green
+        },
+        # Emerald - Rich emerald green theme
+        4: {
+            "name": "Emerald",
+            "window_bg": "#102D28",           # Dark teal-green
+            "panel_bg": "#183D35",            # Slightly lighter
+            "text_bg": "#081A18",             # Very dark teal
+            "text_fg": "#D0F0E8",             # Light mint
+            "button_bg": "#109068",           # Emerald green
+            "button_hover": "#18B080",        # Brighter emerald
+            "button_pressed": "#107050",      # Darker emerald
+            "button_fg": "#FFFFFF",           # White
+            "accent": "#30E0A0",              # Bright emerald accent
+            "label_fg": "#A8E0D0",            # Light teal
+            "combo_bg": "#204D45",            # Medium dark teal
+            "combo_fg": "#D0F0E8",            # Light mint
+            "checkbox_fg": "#A8E0D0",         # Light teal
+            "status_fg": "#80C0B0",           # Muted teal
+        },
+    }
+
+    def get_stylesheet(theme):
+        return f"""
+            QMainWindow, QWidget {{
+                background-color: {theme["window_bg"]};
+            }}
+            QLabel {{
+                color: {theme["label_fg"]};
+                font-weight: bold;
+            }}
+            QTextEdit {{
+                background-color: {theme["text_bg"]};
+                color: {theme["text_fg"]};
+                border: 2px solid {theme["accent"]};
+                border-radius: 5px;
+                padding: 5px;
+                font-family: Consolas, Monaco, monospace;
+                font-size: 11pt;
+            }}
+            QTextEdit:focus {{
+                border: 2px solid {theme["button_bg"]};
+            }}
+            QPushButton {{
+                background-color: {theme["button_bg"]};
+                color: {theme["button_fg"]};
+                border: none;
+                border-radius: 5px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 10pt;
+            }}
+            QPushButton:hover {{
+                background-color: {theme["button_hover"]};
+            }}
+            QPushButton:pressed {{
+                background-color: {theme["button_pressed"]};
+            }}
+            QComboBox {{
+                background-color: {theme["combo_bg"]};
+                color: {theme["combo_fg"]};
+                border: 2px solid {theme["accent"]};
+                border-radius: 5px;
+                padding: 5px 10px;
+                font-weight: bold;
+            }}
+            QComboBox:hover {{
+                border-color: {theme["button_bg"]};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 5px solid {theme["combo_fg"]};
+                margin-right: 5px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme["combo_bg"]};
+                color: {theme["combo_fg"]};
+                selection-background-color: {theme["button_bg"]};
+                selection-color: {theme["button_fg"]};
+            }}
+            QCheckBox {{
+                color: {theme["checkbox_fg"]};
+                font-weight: bold;
+            }}
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {theme["accent"]};
+                border-radius: 3px;
+                background-color: {theme["text_bg"]};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {theme["button_bg"]};
+                border-color: {theme["button_bg"]};
+            }}
+            QCheckBox::indicator:hover {{
+                border-color: {theme["button_hover"]};
+            }}
+            #statusLabel {{
+                color: {theme["status_fg"]};
+                font-style: italic;
+            }}
+        """
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowTitle("Pokémon Gen 3 (GBA) Text Encoder/Decoder")
+            self.setMinimumSize(600, 450)
+
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            layout = QVBoxLayout(central_widget)
+
+            # Top bar: Region, Game selection, and Load button
+            top_bar_layout = QHBoxLayout()
+
+            # Region dropdown
+            top_bar_layout.addWidget(QLabel("Region:"))
+            self.region_combo = QComboBox()
+            self.region_combo.addItems(["English/Western", "Japanese"])
+            top_bar_layout.addWidget(self.region_combo)
+
+            top_bar_layout.addSpacing(20)
+
+            # Game dropdown
+            top_bar_layout.addWidget(QLabel("Game:"))
+            self.game_combo = QComboBox()
+            self.game_combo.addItems([
+                "Ruby",
+                "Sapphire",
+                "FireRed",
+                "LeafGreen",
+                "Emerald"
+            ])
+            self.game_combo.setCurrentIndex(4)  # Default to Emerald
+            self.game_combo.currentIndexChanged.connect(self.update_theme)
+            top_bar_layout.addWidget(self.game_combo)
+
+            top_bar_layout.addStretch()
+
+            # Load file button
+            self.load_button = QPushButton("Load File...")
+            self.load_button.setToolTip("Load text from a file")
+            self.load_button.clicked.connect(self.load_file)
+            top_bar_layout.addWidget(self.load_button)
+
+            layout.addLayout(top_bar_layout)
+
+            # Text field
+            layout.addWidget(QLabel("Text:"))
+            self.text_field = QTextEdit()
+            self.text_field.setPlaceholderText("Enter text to encode here...")
+            layout.addWidget(self.text_field)
+
+            # Middle section: Encode/Decode buttons
+            middle_layout = QHBoxLayout()
+            middle_layout.addStretch()
+
+            self.encode_button = QPushButton("▼ Encode ▼")
+            self.encode_button.setToolTip("Convert text to bytes")
+            self.encode_button.setMinimumWidth(120)
+            self.encode_button.clicked.connect(self.encode)
+            middle_layout.addWidget(self.encode_button)
+
+            middle_layout.addSpacing(20)
+
+            self.decode_button = QPushButton("▲ Decode ▲")
+            self.decode_button.setToolTip("Convert bytes to text")
+            self.decode_button.setMinimumWidth(120)
+            self.decode_button.clicked.connect(self.decode)
+            middle_layout.addWidget(self.decode_button)
+
+            middle_layout.addStretch()
+            layout.addLayout(middle_layout)
+
+            # Bytes field
+            layout.addWidget(QLabel("Bytes (hex):"))
+            self.bytes_field = QTextEdit()
+            self.bytes_field.setPlaceholderText("Enter hex bytes to decode here (e.g., BB BD or BBBD)...")
+            layout.addWidget(self.bytes_field)
+
+            # Bottom bar: Options and status
+            bottom_layout = QHBoxLayout()
+
+            # No spaces checkbox
+            self.no_spaces_checkbox = QCheckBox("No spaces between bytes")
+            self.no_spaces_checkbox.setToolTip("Output bytes without spaces (e.g., BBBD instead of BB BD)")
+            bottom_layout.addWidget(self.no_spaces_checkbox)
+
+            bottom_layout.addStretch()
+
+            # Status label
+            self.status_label = QLabel("")
+            self.status_label.setObjectName("statusLabel")
+            bottom_layout.addWidget(self.status_label)
+
+            layout.addLayout(bottom_layout)
+
+            # Apply initial theme (Emerald)
+            self.update_theme()
+
+        def update_theme(self):
+            """Update the color theme based on selected game."""
+            game_index = self.game_combo.currentIndex()
+            theme = THEMES.get(game_index, THEMES[4])  # Default to Emerald
+            self.setStyleSheet(get_stylesheet(theme))
+
+        def get_game_name(self):
+            """Get the game name from the dropdown."""
+            game_map = {
+                0: "ruby",
+                1: "sapphire",
+                2: "fr",
+                3: "lg",
+                4: "emerald"
+            }
+            return game_map.get(self.game_combo.currentIndex(), "emerald")
+
+        def get_current_tables(self):
+            """Get the encoding/decoding tables based on current selection."""
+            is_japanese = self.region_combo.currentIndex() == 1
+            game = self.get_game_name()
+            return get_tables(game, is_japanese)
+
+        def load_file(self):
+            """Load text from a file and put it in both fields."""
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Open Text File",
+                "",
+                "Text Files (*.txt);;All Files (*)"
+            )
+
+            if not file_path:
+                return  # User cancelled
+
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+
+                # Normalize line endings and convert to placeholder
+                content = content.replace("\r\n", "\n").replace("\r", "\n")
+                content_with_placeholders = content.replace("\n", "<0xFE>")
+
+                # Put the content in both fields
+                self.text_field.setPlainText(content_with_placeholders)
+                self.bytes_field.setPlainText(content_with_placeholders)
+
+                self.status_label.setText(f"Loaded: {os.path.basename(file_path)}")
+
+            except Exception as e:
+                QMessageBox.warning(self, "File Error", f"Could not read file:\n{e}")
+                self.status_label.setText("File load failed.")
+
+        def encode(self):
+            """Encode text to bytes."""
+            text = self.text_field.toPlainText()
+            if not text:
+                self.status_label.setText("No text to encode.")
+                return
+
+            encode_map, decode_map, is_english = self.get_current_tables()
+
+            try:
+                encoded = encode_text(text, encode_map, is_english=is_english)
+                if self.no_spaces_checkbox.isChecked():
+                    self.bytes_field.setPlainText("".join(encoded))
+                else:
+                    self.bytes_field.setPlainText(" ".join(encoded))
+                self.status_label.setText(f"Encoded {len(text)} characters to {len(encoded)} bytes.")
+            except ValueError as e:
+                QMessageBox.warning(self, "Encoding Error", str(e))
+                self.status_label.setText("Encoding failed.")
+
+        def decode(self):
+            """Decode bytes to text."""
+            bytes_text = self.bytes_field.toPlainText()
+            if not bytes_text:
+                self.status_label.setText("No bytes to decode.")
+                return
+
+            encode_map, decode_map, is_english = self.get_current_tables()
+
+            # Clean up the input - remove all whitespace
+            cleaned = re.sub(r"\s+", "", bytes_text)
+
+            if len(cleaned) % 2 != 0:
+                QMessageBox.warning(
+                    self, "Decoding Error",
+                    "Byte string must have an even number of hex digits."
+                )
+                self.status_label.setText("Decoding failed.")
+                return
+
+            # Validate hex characters
+            if not all(c in '0123456789ABCDEFabcdef' for c in cleaned):
+                QMessageBox.warning(
+                    self, "Decoding Error",
+                    "Byte string contains invalid characters. Use only hex digits (0-9, A-F)."
+                )
+                self.status_label.setText("Decoding failed.")
+                return
+
+            bytes_list = [cleaned[i:i+2] for i in range(0, len(cleaned), 2)]
+            decoded = decode_bytes(bytes_list, decode_map)
+            self.text_field.setPlainText(decoded)
+            self.status_label.setText(f"Decoded {len(bytes_list)} bytes to text.")
+
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec())
+
+
+# ============================================================
 #  CLI WITH FILE SUPPORT + NEWLINE SPECIAL CASES
 # ============================================================
 
-def main():
+def create_argument_parser():
+    """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         description="Pokémon Gen 3 (GBA) text encoder/decoder (Western & Japanese)"
     )
@@ -333,7 +749,17 @@ def main():
         "-n", action="store_true",
         help="No spaces between output byte values"
     )
+    return parser
 
+
+def main():
+    # Check if any arguments were passed (besides the script name)
+    if len(sys.argv) == 1:
+        # No arguments - launch GUI
+        run_gui()
+        return
+
+    parser = create_argument_parser()
     args = parser.parse_args()
 
     if args.ruby:
