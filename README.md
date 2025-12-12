@@ -71,6 +71,14 @@ Edit the bag in a save file:
 pokemon_bag <file> <game>
 ```
 
+### Party Editor (only Gen 1 and 2 for now)
+
+Edit the party in a save file:
+
+``` sh
+pokemon_party <file> <game>
+```
+
 ### Mirage Island Modifier
 
 Edit Mirage Island bytes:

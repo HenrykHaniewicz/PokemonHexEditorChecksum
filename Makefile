@@ -24,8 +24,9 @@ HEX_EDITOR_BIN = hex_editor
 CHECKSUM_BIN = checksum
 MIRAGE_ISLAND_BIN = mirageisland
 POKEMON_BAG_BIN = pokemon_bag
+POKEMON_PARTY_BIN = pokemon_party
 
-BINS = $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN) $(POKEMON_BAG_BIN)
+BINS = $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN) $(POKEMON_BAG_BIN) $(POKEMON_PARTY_BIN)
 
 # Common objects used by multiple targets
 COMMON_OBJS = $(OBJDIR)/common_sdl_app_base.o
@@ -47,6 +48,10 @@ MIRAGE_ISLAND_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
 POKEMON_BAG_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
                    $(OBJDIR)/pokemon_bag_pokemon_bag.o \
                    $(OBJDIR)/pokemon_bag_main.o
+
+POKEMON_PARTY_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+                   $(OBJDIR)/pokemon_party_pokemon_party.o \
+                   $(OBJDIR)/pokemon_party_main.o
 
 # Default target
 all: $(BINS)
@@ -76,6 +81,9 @@ $(MIRAGE_ISLAND_BIN): $(MIRAGE_ISLAND_OBJS)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 $(POKEMON_BAG_BIN): $(POKEMON_BAG_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+$(POKEMON_PARTY_BIN): $(POKEMON_PARTY_OBJS)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # Include dependency files (if they exist)

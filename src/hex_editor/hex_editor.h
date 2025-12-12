@@ -3,11 +3,10 @@
 
 #include "../common/sdl_app_base.h"
 #include "../common/hex_utils.h"
-#include "../encodings/encodings.h"
+#include "../encodings/text_encodings.h"
 #include <string>
 #include <set>
 #include <vector>
-#include <cmath>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -17,145 +16,219 @@
 #define MKDIR(path) mkdir(path, 0755)
 #endif
 
+// ============================================================================
+// Edit Action (for undo functionality)
+// ============================================================================
+
+struct EditAction {
+    size_t index;
+    char oldValue;
+    char newValue;
+};
+
+// ============================================================================
+// Hex Editor Class
+// ============================================================================
+
 class HexEditor : public SDLAppBase {
 private:
-    // File data
+    // ========================================================================
+    // Constants
+    // ========================================================================
+    static const int ROW_SIZE = 16;
+    
+    static constexpr float MIN_ZOOM = 1.0f;
+    static constexpr float MAX_ZOOM = 4.0f;
+    static constexpr float ZOOM_STEP = 0.15f;
+    static constexpr float ZOOM_SMOOTH_SPEED = 12.0f;
+    static constexpr float AUTO_SCROLL_DELAY = 0.05f;
+
+    // ========================================================================
+    // File Data
+    // ========================================================================
     std::string fileBuffer;
+    std::string savedFileBuffer;
     std::string fileName;
     std::string baseFileName;
     size_t fileSize;
-
-    std::string savedFileBuffer;
     
-    // Display settings
-    static const int ROW_SIZE = 16;
+    // ========================================================================
+    // Display Configuration
+    // ========================================================================
     int headerHeight;
     int byteGrouping;
-    
-    // Text encoding
     TextEncoding textEncoding;
     
-    // Base character dimensions (at zoom 1.0)
+    // ========================================================================
+    // Character Dimensions
+    // ========================================================================
+    // Base dimensions (at zoom 1.0)
     int baseCharWidth;
     int baseCharHeight;
     
-    // Effective (zoomed) character dimensions
+    // Effective dimensions (scaled by zoom)
     int effectiveCharWidth;
     int effectiveCharHeight;
-    
-    // Layout positions (recalculated on zoom)
+    int decodedCellWidth;
+
+    // ========================================================================
+    // Layout Positions (recalculated on zoom/resize)
+    // ========================================================================
     int addressX;
     int hexX;
     int asciiX;
     int contentEndX;
     
-    // Zoom functionality
+    // ========================================================================
+    // Zoom State
+    // ========================================================================
     float zoomLevel;
     float targetZoomLevel;
-    static constexpr float MIN_ZOOM = 1.0f;
-    static constexpr float MAX_ZOOM = 4.0f;
-    static constexpr float ZOOM_STEP = 0.15f;
-    static constexpr float ZOOM_SMOOTH_SPEED = 12.0f;
     
-    // Input state
+    // ========================================================================
+    // Input Mode State
+    // ========================================================================
     bool gotoMode;
     std::string gotoAddressInput;
     
-    // Search state
     bool searchMode;
     std::string searchInput;
     std::vector<size_t> searchMatches;
     size_t currentMatchIndex;
     
-    // Editing state
+    // ========================================================================
+    // Editing State
+    // ========================================================================
     int64_t selectedByteIndex;
     std::string editBuffer;
     bool hasUnsavedChanges;
     std::set<size_t> modifiedBytes;
-
-    // Per-byte undo stack
-    struct EditAction {
-        size_t index;
-        char oldValue;
-        char newValue;
-    };
     std::vector<EditAction> undoStack;
-
     bool overwriteMode;
 
-    // Selection state (for multi-byte selection)
+    // ========================================================================
+    // Selection State
+    // ========================================================================
     bool isSelecting;
     int64_t selectionStart;
     int64_t selectionEnd;
     
-    // Save button
+    // ========================================================================
+    // UI State
+    // ========================================================================
     SDL_Rect saveButtonRect;
     bool saveButtonHovered;
-
-    // Auto-scroll state
-    int autoScrollDirection; // -1 for up, 0 for none, 1 for down
+    
+    // Auto-scroll during selection
+    int autoScrollDirection;  // -1 = up, 0 = none, 1 = down
     float autoScrollTimer;
-    static constexpr float AUTO_SCROLL_DELAY = 0.05f;
 
-    // Internal methods
-    void updateLayout();
-    void updateWindowTitle();
+    // ========================================================================
+    // Layout Methods
+    // ========================================================================
     void recalculateLayoutForZoom();
-    int getByteXPosition(int byteInRow);
-    int getHexSectionWidth();
-    void renderHeader();
-    int getByteIndexFromPosition(int x, int y);
+    int getByteXPosition(int byteInRow) const;
+    int getByteIndexFromPosition(int x, int y) const;
+    bool isJapaneseEncoding() const;
     
+    // ========================================================================
+    // Zoom Methods
+    // ========================================================================
+    void setZoom(float zoom);
+    void adjustZoom(float delta);
+    float calculateMaxZoom() const;
+    
+    // ========================================================================
+    // Navigation Methods
+    // ========================================================================
     void scrollToAddress(size_t address);
-    
     void selectByte(int64_t index);
+    
+    // ========================================================================
+    // Selection Methods
+    // ========================================================================
+    void clearSelection();
+    bool hasSelectionRange() const;
+    void getSelectionRange(int64_t& start, int64_t& end) const;
+    
+    // ========================================================================
+    // Editing Methods
+    // ========================================================================
     void commitEdit();
     void handleEditInput(char c);
-
-    void handleCopy();
-    void clearSelection();
-    bool hasSelection() const;
-    void getSelectionRange(int64_t& start, int64_t& end) const;
-
     void undoLastEdit();
     void updateModifiedState(size_t index);
     
-    bool fileExists(const std::string& path);
-    std::string getOutputPath();
+    // ========================================================================
+    // File Operations
+    // ========================================================================
+    bool fileExists(const std::string& path) const;
+    std::string getOutputPath() const;
     bool saveFile();
+    void updateWindowTitle();
     
-    void appendHexInput(const std::string& text);
+    // ========================================================================
+    // Clipboard Operations
+    // ========================================================================
+    void handleCopy();
     void handlePaste();
-    void handleGotoInput(SDL_Keycode key, Uint16 mod);
-    void handleSearchInput(SDL_Keycode key, Uint16 mod);
+    void appendHexInput(const std::string& text);
+    
+    // ========================================================================
+    // Search Methods
+    // ========================================================================
     void updateSearchMatches();
     void gotoNextMatch();
+    
+    // ========================================================================
+    // Text Analysis
+    // ========================================================================
+    bool containsJapaneseCharacters(const std::string& text) const;
+    size_t getVisualCellCount(const std::string& text) const;
+    
+    // ========================================================================
+    // Event Handlers
+    // ========================================================================
     void handleTextInput(const char* text);
+    void handleKeyDown(SDL_Keycode key, Uint16 mod);
+    void handleGotoInput(SDL_Keycode key, Uint16 mod);
+    void handleSearchInput(SDL_Keycode key, Uint16 mod);
+    bool handleNavigationKey(SDL_Keycode key, Uint16 mod);
     void handleMouseDown(int x, int y);
     void handleMouseUp();
     void handleMouseMotion(int x, int y);
     void handleMouseWheel(SDL_MouseWheelEvent& wheel);
-    void handleKeyDown(SDL_Keycode key, Uint16 mod);
     
-    // Zoom methods
-    void setZoom(float zoom);
-    void adjustZoom(float delta);
-    float calculateMaxZoom();
+    // ========================================================================
+    // Rendering Methods
+    // ========================================================================
+    void renderHeader();
+    void renderDecodedContent(int y, size_t address, size_t bytesInRow);
     
 protected:
+    // ========================================================================
+    // SDLAppBase Overrides
+    // ========================================================================
     void render() override;
     void handleEvent(SDL_Event& event) override;
     void onResize(int newWidth, int newHeight) override;
     void update(float deltaTime) override;
     
 public:
+    // ========================================================================
+    // Public Interface
+    // ========================================================================
     HexEditor();
+    
+    // File operations
     bool loadFile(const char* filename);
+    
+    // Configuration
     void setOverwriteMode(bool overwrite);
     void setByteGrouping(int grouping);
     void setTextEncoding(TextEncoding encoding);
     
-    // Batch mode methods
+    // Batch operations
     bool applyBatchEdits(const std::vector<std::pair<size_t, std::vector<unsigned char>>>& edits);
     void runBatchSaveMode();
 };

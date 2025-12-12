@@ -223,7 +223,7 @@ static const std::unordered_map<uint8_t, const char*> GEN1_ITEMS = {
 // Full item list for Generation 2
 // Items with nameCrystal != nullptr are Crystal-exclusive (Teru-sama in GS)
 static const std::unordered_map<uint8_t, Gen2ItemInfo> GEN2_ITEMS = {
-    {0x00, {"?", nullptr, POCKET_ITEMS}},
+    {0x00, {"None", nullptr, POCKET_ITEMS}},
     {0x01, {"Master Ball", nullptr, POCKET_BALLS}},
     {0x02, {"Ultra Ball", nullptr, POCKET_BALLS}},
     {0x03, {"BrightPowder", nullptr, POCKET_ITEMS}},
