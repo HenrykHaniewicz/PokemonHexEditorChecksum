@@ -1286,66 +1286,37 @@ void PokemonPartyEditor::updateChecksumGen1() {
     size_t start = 0x2598;
     size_t end = isJapanese ? 0x3593 : 0x3522;
     size_t checksumPos = isJapanese ? 0x3594 : 0x3523;
+    
     if (end >= fileSize || checksumPos >= fileSize) return;
     
-    uint32_t sum = 0;
-    for (size_t i = start; i <= end && i < fileSize; i++) {
-        sum += static_cast<uint8_t>(fileBuffer[i]);
-    }
-    uint8_t checksum = static_cast<uint8_t>(~(sum & 0xFF));
+    uint8_t checksum = Generation1Utils::calculate8BitChecksum(fileBuffer, start, end);
     DataUtils::writeU8(fileBuffer, checksumPos, checksum);
 }
 
 void PokemonPartyEditor::updateChecksumGen2() {
-    auto update16BitChecksum = [&](uint32_t start, uint32_t end, uint32_t loc) {
-        uint32_t sum = 0;
-        for (uint32_t i = start; i <= end && i < fileSize; i++) {
-            sum += DataUtils::readU8(fileBuffer, i);
-        }
-        uint16_t checksum = sum & 0xFFFF;
-        if (loc + 1 < fileSize) {
-            DataUtils::writeU16LE(fileBuffer, loc, checksum);
-        }
-    };
-    
-    auto update16BitChecksumMulti = [&](const std::vector<std::pair<uint32_t,uint32_t>>& ranges,
-                                        uint32_t loc) {
-        uint32_t sum = 0;
-        for (const auto& range : ranges) {
-            for (uint32_t i = range.first; i <= range.second && i < fileSize; i++) {
-                sum += static_cast<uint8_t>(fileBuffer[i]);
-            }
-        }
-        uint16_t checksum = static_cast<uint16_t>(sum & 0xFFFF);
-        if (loc + 1 < fileSize) {
-            DataUtils::writeU16LE(fileBuffer, loc, checksum);
-        }
-    };
-
     bool crystal = (gameType == GameType::GEN2_CRYSTAL);
-    if (!crystal) {
-        // Gold/Silver
-        if (isJapanese) {
-            update16BitChecksum(0x2009, 0x2C8B, 0x2D0D);
-            update16BitChecksum(0x7209, 0x7E8B, 0x7F0D);
-        } else {
-            update16BitChecksum(0x2009, 0x2D68, 0x2D69);
-            std::vector<std::pair<uint32_t,uint32_t>> ranges = {
-                {0x0C6B, 0x17EC},
-                {0x3D96, 0x3F3F},
-                {0x7E39, 0x7E6C}
-            };
-            update16BitChecksumMulti(ranges, 0x7E6D);
-        }
+    
+    Generation2Utils::ChecksumConfig config;
+    if (crystal) {
+        config = Generation2Utils::getCrystalConfig(isJapanese);
     } else {
-        // Crystal
-        if (isJapanese) {
-            update16BitChecksum(0x2009, 0x2AE2, 0x2D0D);
-            update16BitChecksum(0x7209, 0x7CE2, 0x7F0D);
-        } else {
-            update16BitChecksum(0x2009, 0x2B82, 0x2D0D);
-            update16BitChecksum(0x1209, 0x1D82, 0x1F0D);
-        }
+        config = Generation2Utils::getGoldSilverConfig(isJapanese);
+    }
+    
+    // Checksum 1
+    uint16_t checksum1 = Generation2Utils::calculate16BitChecksum(
+        fileBuffer, config.start1, config.end1);
+    
+    if (config.checksumLocation1 + 1 < fileSize) {
+        DataUtils::writeU16LE(fileBuffer, config.checksumLocation1, checksum1);
+    }
+    
+    // Checksum 2
+    uint16_t checksum2 = Generation2Utils::calculate16BitChecksumMultiRange(
+        fileBuffer, config.ranges2);
+    
+    if (config.checksumLocation2 + 1 < fileSize) {
+        DataUtils::writeU16LE(fileBuffer, config.checksumLocation2, checksum2);
     }
 }
 

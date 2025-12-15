@@ -18,4 +18,5 @@ DevTest
 data
 obj
 DO_NOT_EDIT
-test_*
+test*
+catch.hpp

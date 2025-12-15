@@ -4,6 +4,8 @@
 #include "../common/sdl_app_base.h"
 #include "../common/hex_utils.h"
 #include "../common/data_utils.h"
+#include "../common/generation1_utils.h"
+#include "../common/generation2_utils.h"
 #include "../common/generation3_utils.h"
 #include <vector>
 #include <cstdint>
@@ -13,28 +15,6 @@ enum GameMode {
     GAME_POKEMON_GOLD_SILVER,
     GAME_POKEMON_CRYSTAL,
     GAME_POKEMON_GENERATION3
-};
-
-struct RedBlueBankData {
-    uint32_t mainSum;
-    uint8_t mainChecksum;
-    uint8_t mainStoredChecksum;
-    size_t mainChecksumLocation;
-    bool mainMatches;
-    
-    uint32_t subSums[6];
-    uint8_t subChecksums[6];
-    uint8_t subStoredChecksums[6];
-    size_t subChecksumLocations[6];
-    bool subMatches[6];
-};
-
-struct PokemonChecksumResult {
-    size_t location;
-    uint16_t calculated;
-    uint16_t stored;
-    bool valid;
-    std::string locationStr;
 };
 
 class ChecksumCalculator : public SDLAppBase {
@@ -59,8 +39,8 @@ private:
     size_t redBlueBank1Start;
     size_t redBlueBank1End;
     bool redBlueBank1Matches;
-    RedBlueBankData redBlueBank2;
-    RedBlueBankData redBlueBank3;
+    Generation1Utils::BankChecksumData redBlueBank2;
+    Generation1Utils::BankChecksumData redBlueBank3;
     
     // Pokemon Gold/Silver results
     uint32_t goldSilverTotalSum1;
@@ -98,8 +78,8 @@ private:
     // Pokemon checksum mode
     bool pokemonChecksumMode;
 
-    std::vector<PokemonChecksumResult> pokemonResultsSaveA;
-    std::vector<PokemonChecksumResult> pokemonResultsSaveB;
+    std::vector<Generation3Utils::PokemonChecksumResult> pokemonResultsSaveA;
+    std::vector<Generation3Utils::PokemonChecksumResult> pokemonResultsSaveB;
 
     // Low-level buffer read/write helpers
     uint8_t readU8(size_t offset) const;
@@ -109,7 +89,8 @@ private:
     
     // Pokemon data structure helpers
     uint16_t calculatePokemonDataChecksum(size_t pokemonBaseAddr, uint32_t decryptionKey) const;
-    PokemonChecksumResult calculatePokemonChecksumResult(size_t pokemonBaseAddr, const std::string& locationStr) const;
+    Generation3Utils::PokemonChecksumResult calculatePokemonChecksumResult(
+        size_t pokemonBaseAddr, const std::string& locationStr) const;
     
     // Game-specific checksum calculations
     bool calculateChecksumPokemonRedBlue();
@@ -118,7 +99,7 @@ private:
     bool calculateChecksumPokemonGeneration3();
     
     uint8_t calculateRedBlue8BitChecksum(size_t start, size_t end, uint32_t& outSum);
-    void calculateRedBlueBankChecksums(size_t baseAddr, RedBlueBankData& bankData);
+    void calculateRedBlueBankChecksums(size_t baseAddr, Generation1Utils::BankChecksumData& bankData);
     
     uint16_t calculateGBC16BitChecksum(size_t start, size_t end, uint32_t& outSum);
     uint16_t calculateGBC16BitChecksumMultiRange(const std::vector<std::pair<size_t, size_t>>& ranges, uint32_t& outSum);
@@ -130,17 +111,15 @@ private:
 
     size_t findSectionOffset(const Generation3Utils::SaveBlock& saveBlock, uint16_t sectionId);
     
-    void calculateAllPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock, 
-                                     std::vector<PokemonChecksumResult>& results,
-                                     const std::string& saveBlockName);
-    
     void calculatePartyPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
-                                       std::vector<PokemonChecksumResult>& results,
-                                       const std::string& saveBlockName);
-    
+                                    std::vector<Generation3Utils::PokemonChecksumResult>& results,
+                                    const std::string& saveBlockName);
     void calculateBoxPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
-                                     std::vector<PokemonChecksumResult>& results,
-                                     const std::string& saveBlockName);
+                                    std::vector<Generation3Utils::PokemonChecksumResult>& results,
+                                    const std::string& saveBlockName);
+    void calculateAllPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
+                                    std::vector<Generation3Utils::PokemonChecksumResult>& results,
+                                    const std::string& saveBlockName);
     
     // Writing and formatting
     bool writeChecksumsToFile();

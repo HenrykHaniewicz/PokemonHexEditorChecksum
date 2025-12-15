@@ -30,6 +30,8 @@ BINS = $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN) $(POKEMON_BAG_BIN)
 
 # Common objects used by multiple targets
 COMMON_OBJS = $(OBJDIR)/common_sdl_app_base.o
+GEN1_OBJS = $(OBJDIR)/common_generation1_utils.o
+GEN2_OBJS = $(OBJDIR)/common_generation2_utils.o
 GEN3_OBJS = $(OBJDIR)/common_generation3_utils.o
 
 # Object lists for each executable
@@ -37,7 +39,7 @@ HEX_EDITOR_OBJS = $(COMMON_OBJS) \
                   $(OBJDIR)/hex_editor_hex_editor.o \
                   $(OBJDIR)/hex_editor_main.o
 
-CHECKSUM_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+CHECKSUM_OBJS = $(COMMON_OBJS) $(GEN1_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
                 $(OBJDIR)/checksum_checksum_calc.o \
                 $(OBJDIR)/checksum_main.o
 
@@ -45,11 +47,11 @@ MIRAGE_ISLAND_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
                      $(OBJDIR)/mirage_island_mirage_island.o \
                      $(OBJDIR)/mirage_island_main.o
 
-POKEMON_BAG_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+POKEMON_BAG_OBJS = $(COMMON_OBJS) $(GEN1_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
                    $(OBJDIR)/pokemon_bag_pokemon_bag.o \
                    $(OBJDIR)/pokemon_bag_main.o
 
-POKEMON_PARTY_OBJS = $(COMMON_OBJS) $(GEN3_OBJS) \
+POKEMON_PARTY_OBJS = $(COMMON_OBJS) $(GEN1_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
                    $(OBJDIR)/pokemon_party_pokemon_party.o \
                    $(OBJDIR)/pokemon_party_main.o
 

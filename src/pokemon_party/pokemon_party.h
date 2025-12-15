@@ -4,6 +4,8 @@
 #include "../common/sdl_app_base.h"
 #include "../common/data_utils.h"
 #include "../common/hex_utils.h"
+#include "../common/generation1_utils.h"
+#include "../common/generation2_utils.h"
 #include "../encodings/pokemon_index_eng.h"
 #include "../encodings/moves_index_eng.h"
 #include "../encodings/types_index_eng.h"

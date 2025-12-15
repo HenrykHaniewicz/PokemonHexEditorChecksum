@@ -261,7 +261,7 @@ bool MirageIslandEditor::execute() {
         return false;
     }
     
-    const size_t requiredSize = 0x20000;
+    const size_t requiredSize = Generation3Utils::GEN3_SAVE_SIZE;
     
     if (fileSize < requiredSize) {
         std::stringstream ss;

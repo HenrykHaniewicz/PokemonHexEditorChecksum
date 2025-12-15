@@ -31,6 +31,13 @@ inline void writeU16LE(std::string& buffer, size_t offset, uint16_t value) {
     buffer[offset + 1] = static_cast<char>((value >> 8) & 0xFF);
 }
 
+inline void writeU32LE(std::string& buffer, size_t offset, uint32_t value) {
+    buffer[offset] = static_cast<char>(value & 0xFF);
+    buffer[offset + 1] = static_cast<char>((value >> 8) & 0xFF);
+    buffer[offset + 2] = static_cast<char>((value >> 16) & 0xFF);
+    buffer[offset + 3] = static_cast<char>((value >> 24) & 0xFF);
+}
+
 inline uint16_t readU16BE(const std::string& buffer, size_t offset) {
     return (static_cast<uint16_t>(readU8(buffer, offset)) << 8) |
            static_cast<uint16_t>(readU8(buffer, offset + 1));

@@ -70,10 +70,10 @@ uint16_t ChecksumCalculator::calculatePokemonDataChecksum(size_t pokemonBaseAddr
     return Generation3Utils::calculatePokemonDataChecksum(fileBuffer, pokemonBaseAddr, decryptionKey);
 }
 
-PokemonChecksumResult ChecksumCalculator::calculatePokemonChecksumResult(
+Generation3Utils::PokemonChecksumResult ChecksumCalculator::calculatePokemonChecksumResult(
     size_t pokemonBaseAddr, const std::string& locationStr) const {
     
-    PokemonChecksumResult result;
+    Generation3Utils::PokemonChecksumResult result;
     result.location = pokemonBaseAddr + 0x1C;
     result.locationStr = locationStr;
     
@@ -441,45 +441,44 @@ bool ChecksumCalculator::calculateChecksumPokemonGeneration3() {
 }
 
 // ============================================================================
-// Helper Calculation Functions
+// Helper Calculation Functions (Wrappers for common utilities)
 // ============================================================================
 
 uint8_t ChecksumCalculator::calculateRedBlue8BitChecksum(size_t start, size_t end, uint32_t& outSum) {
-    outSum = 0;
-    for (size_t i = start; i <= end; i++) {
-        outSum += readU8(i);
-    }
-    uint8_t sumMod = outSum & 0xFF;
-    return ~sumMod;
+    return Generation1Utils::calculate8BitChecksum(fileBuffer, start, end, outSum);
 }
 
 uint16_t ChecksumCalculator::calculateGBC16BitChecksum(size_t start, size_t end, uint32_t& outSum) {
-    outSum = 0;
-    for (size_t i = start; i <= end; i++) {
-        outSum += readU8(i);
-    }
-    return outSum & 0xFFFF;
+    return Generation2Utils::calculate16BitChecksum(fileBuffer, start, end, outSum);
 }
 
 uint16_t ChecksumCalculator::calculateGBC16BitChecksumMultiRange(const std::vector<std::pair<size_t, size_t>>& ranges, uint32_t& outSum) {
-    outSum = 0;
-    for (const auto& range : ranges) {
-        for (size_t i = range.first; i <= range.second; i++) {
-            outSum += readU8(i);
-        }
-    }
-    return outSum & 0xFFFF;
+    return Generation2Utils::calculate16BitChecksumMultiRange(fileBuffer, ranges, outSum);
 }
 
 uint16_t ChecksumCalculator::calculateGen3SectionChecksum(size_t baseAddr, size_t dataSize) {
     return Generation3Utils::calculateSectionChecksum(fileBuffer, baseAddr, dataSize);
 }
 
-void ChecksumCalculator::calculateRedBlueBankChecksums(size_t baseAddr, RedBlueBankData& bankData) {
-    const size_t mainStart = 0x0000;
-    const size_t mainEnd = 0x1A4B;
-    const size_t mainChecksumOffset = 0x1A4C;
+void ChecksumCalculator::calculateRedBlueBankChecksums(size_t baseAddr, Generation1Utils::BankChecksumData& bankData) {
+    Generation1Utils::calculateBankChecksums(fileBuffer, baseAddr, bankData);
     
+    // Print debug output
+    bool isAllFF = Generation1Utils::isBankUnused(fileBuffer, baseAddr);
+    
+    if (isAllFF) {
+        std::cout << "  [Bank filled with 0xFF - unused, treating as valid]" << std::endl;
+    }
+    
+    std::cout << "  Main range: 0x" << HexUtils::toHexString(baseAddr, 4) 
+              << " - 0x" << HexUtils::toHexString(baseAddr + 0x1A4B, 4) << std::endl;
+    std::cout << "  Main sum: 0x" << std::hex << bankData.mainSum 
+              << ", Checksum: calc=0x" << HexUtils::toHexString(bankData.mainChecksum, 2)
+              << " stored=0x" << HexUtils::toHexString(bankData.mainStoredChecksum, 2)
+              << " @ 0x" << HexUtils::toHexString(bankData.mainChecksumLocation, 4)
+              << (bankData.mainMatches ? " OK" : " MISMATCH") << std::endl;
+    
+    std::cout << "  Sub-checksums:" << std::endl;
     const size_t subRanges[6][2] = {
         {0x0000, 0x0461},
         {0x0462, 0x08C3},
@@ -488,56 +487,8 @@ void ChecksumCalculator::calculateRedBlueBankChecksums(size_t baseAddr, RedBlueB
         {0x1188, 0x15E9},
         {0x15EA, 0x1A4B}
     };
-    const size_t subChecksumOffsets[6] = {0x1A4D, 0x1A4E, 0x1A4F, 0x1A50, 0x1A51, 0x1A52};
     
-    // Check if entire bank is filled with 0xFF (unused box)
-    bool isAllFF = true;
-    for (size_t i = baseAddr + mainStart; i <= baseAddr + mainEnd; i++) {
-        if (readU8(i) != 0xFF) {
-            isAllFF = false;
-            break;
-        }
-    }
-    
-    bankData.mainChecksum = calculateRedBlue8BitChecksum(
-        baseAddr + mainStart, 
-        baseAddr + mainEnd, 
-        bankData.mainSum
-    );
-    bankData.mainChecksumLocation = baseAddr + mainChecksumOffset;
-    bankData.mainStoredChecksum = readU8(bankData.mainChecksumLocation);
-    
-    if (isAllFF) {
-        bankData.mainMatches = true;
-        std::cout << "  [Bank filled with 0xFF - unused, treating as valid]" << std::endl;
-    } else {
-        bankData.mainMatches = (bankData.mainChecksum == bankData.mainStoredChecksum);
-    }
-    
-    std::cout << "  Main range: 0x" << HexUtils::toHexString(baseAddr + mainStart, 4) 
-              << " - 0x" << HexUtils::toHexString(baseAddr + mainEnd, 4) << std::endl;
-    std::cout << "  Main sum: 0x" << std::hex << bankData.mainSum 
-              << ", Checksum: calc=0x" << HexUtils::toHexString(bankData.mainChecksum, 2)
-              << " stored=0x" << HexUtils::toHexString(bankData.mainStoredChecksum, 2)
-              << " @ 0x" << HexUtils::toHexString(bankData.mainChecksumLocation, 4)
-              << (bankData.mainMatches ? " OK" : " MISMATCH") << std::endl;
-    
-    std::cout << "  Sub-checksums:" << std::endl;
     for (int i = 0; i < 6; i++) {
-        bankData.subChecksums[i] = calculateRedBlue8BitChecksum(
-            baseAddr + subRanges[i][0],
-            baseAddr + subRanges[i][1],
-            bankData.subSums[i]
-        );
-        bankData.subChecksumLocations[i] = baseAddr + subChecksumOffsets[i];
-        bankData.subStoredChecksums[i] = readU8(bankData.subChecksumLocations[i]);
-        
-        if (isAllFF) {
-            bankData.subMatches[i] = true;
-        } else {
-            bankData.subMatches[i] = (bankData.subChecksums[i] == bankData.subStoredChecksums[i]);
-        }
-        
         std::cout << "    [" << i << "] 0x" << HexUtils::toHexString(baseAddr + subRanges[i][0], 4)
                   << " - 0x" << HexUtils::toHexString(baseAddr + subRanges[i][1], 4)
                   << " : sum=0x" << std::hex << bankData.subSums[i]
@@ -597,7 +548,7 @@ size_t ChecksumCalculator::findSectionOffset(const Generation3Utils::SaveBlock& 
 }
 
 void ChecksumCalculator::calculatePartyPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
-                                                       std::vector<PokemonChecksumResult>& results,
+                                                       std::vector<Generation3Utils::PokemonChecksumResult>& results,
                                                        const std::string& saveBlockName) {
     size_t sectionOffset = findSectionOffset(saveBlock, 1);
     if (sectionOffset == static_cast<size_t>(-1)) {
@@ -632,118 +583,43 @@ void ChecksumCalculator::calculatePartyPokemonChecksums(const Generation3Utils::
 }
 
 void ChecksumCalculator::calculateBoxPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
-                                                     std::vector<PokemonChecksumResult>& results,
+                                                     std::vector<Generation3Utils::PokemonChecksumResult>& results,
                                                      const std::string& saveBlockName) {
-    // Build data ranges for each section (5-13)
-    std::vector<std::pair<size_t, size_t>> dataRanges;
+    // Build data ranges for box Pokemon sections (5-13)
+    auto dataRanges = Generation3Utils::buildBoxDataRanges(saveBlock);
     
-    for (int sectionId = 5; sectionId <= 13; sectionId++) {
-        size_t sectionOffset = findSectionOffset(saveBlock, sectionId);
-        if (sectionOffset == static_cast<size_t>(-1)) continue;
-        
-        size_t startOffset = (sectionId == 5) ? 0x04 : 0x00;
-        size_t usableBytes = 0x0F80 - startOffset;
-        
-        dataRanges.push_back({sectionOffset + startOffset, usableBytes});
+    if (dataRanges.empty()) {
+        std::cerr << "Warning: Could not build box data ranges for " << saveBlockName << std::endl;
+        return;
     }
     
-    // Helper to read bytes across section boundaries
-    auto readBytesAcrossSections = [&](size_t logicalStart, size_t length) -> std::vector<uint8_t> {
-        std::vector<uint8_t> data(length);
-        size_t bytesRead = 0;
-        size_t currentLogicalPos = 0;
-        
-        for (const auto& range : dataRanges) {
-            if (bytesRead >= length) break;
-            
-            size_t rangeEnd = currentLogicalPos + range.second;
-            
-            if (logicalStart >= currentLogicalPos && logicalStart < rangeEnd) {
-                size_t offsetInRange = logicalStart - currentLogicalPos;
-                size_t bytesToRead = std::min(length - bytesRead, range.second - offsetInRange);
-                
-                for (size_t i = 0; i < bytesToRead; i++) {
-                    data[bytesRead + i] = readU8(range.first + offsetInRange + i);
-                }
-                bytesRead += bytesToRead;
-                logicalStart += bytesToRead;
-            } else if (logicalStart < currentLogicalPos && rangeEnd > logicalStart) {
-                size_t bytesToRead = std::min(length - bytesRead, range.second);
-                
-                for (size_t i = 0; i < bytesToRead; i++) {
-                    data[bytesRead + i] = readU8(range.first + i);
-                }
-                bytesRead += bytesToRead;
-                logicalStart += bytesToRead;
-            }
-            
-            currentLogicalPos = rangeEnd;
-        }
-        
-        return data;
-    };
-    
-    // Helper to get physical address from logical offset
-    auto getPhysicalAddress = [&](size_t logicalPos) -> size_t {
-        size_t currentLogicalPos = 0;
-        
-        for (const auto& range : dataRanges) {
-            if (logicalPos < currentLogicalPos + range.second) {
-                return range.first + (logicalPos - currentLogicalPos);
-            }
-            currentLogicalPos += range.second;
-        }
-        return 0;
-    };
-    
-    // Helper to read 32-bit value across sections
-    auto readU32Across = [&](size_t logicalOffset) -> uint32_t {
-        std::vector<uint8_t> bytes = readBytesAcrossSections(logicalOffset, 4);
-        return static_cast<uint32_t>(bytes[0]) | 
-               (static_cast<uint32_t>(bytes[1]) << 8) | 
-               (static_cast<uint32_t>(bytes[2]) << 16) | 
-               (static_cast<uint32_t>(bytes[3]) << 24);
-    };
-    
-    // Helper to read 16-bit value across sections
-    auto readU16Across = [&](size_t logicalOffset) -> uint16_t {
-        std::vector<uint8_t> bytes = readBytesAcrossSections(logicalOffset, 2);
-        return static_cast<uint16_t>(bytes[0]) | (static_cast<uint16_t>(bytes[1]) << 8);
-    };
+    // Create cross-section reader
+    Generation3Utils::CrossSectionReader reader(fileBuffer, dataRanges);
     
     size_t totalPokemonProcessed = 0;
     size_t logicalOffset = 0;
     
-    while (totalPokemonProcessed < 420) {
-        uint32_t personality = readU32Across(logicalOffset);
+    while (totalPokemonProcessed < Generation3Utils::MAX_BOX_POKEMON) {
+        uint32_t personality = reader.readU32LE(logicalOffset);
         
         if (personality == 0) {
-            logicalOffset += 80;
+            logicalOffset += Generation3Utils::BOX_POKEMON_SIZE;
             totalPokemonProcessed++;
             continue;
         }
         
-        uint32_t otid = readU32Across(logicalOffset + 4);
+        uint32_t otid = reader.readU32LE(logicalOffset + Generation3Utils::POKEMON_OTID_OFFSET);
         uint32_t key = personality ^ otid;
         
-        // Decrypt and sum the 48 bytes of data
-        uint32_t sum = 0;
-        for (int i = 0; i < 12; i++) {
-            uint32_t encryptedWord = readU32Across(logicalOffset + 0x20 + (i * 4));
-            uint32_t decryptedWord = encryptedWord ^ key;
-            
-            sum += (decryptedWord & 0xFFFF);
-            sum += ((decryptedWord >> 16) & 0xFFFF);
-        }
-        
-        uint16_t calculatedChecksum = sum & 0xFFFF;
-        uint16_t storedChecksum = readU16Across(logicalOffset + 0x1C);
-        size_t checksumPhysicalAddress = getPhysicalAddress(logicalOffset + 0x1C);
+        // Calculate checksum using the utility function
+        uint16_t calculatedChecksum = Generation3Utils::calculateBoxPokemonChecksum(reader, logicalOffset, key);
+        uint16_t storedChecksum = reader.readU16LE(logicalOffset + Generation3Utils::POKEMON_CHECKSUM_OFFSET);
+        size_t checksumPhysicalAddress = reader.getPhysicalAddress(logicalOffset + Generation3Utils::POKEMON_CHECKSUM_OFFSET);
         
         int boxNumber = static_cast<int>(totalPokemonProcessed / 30);
         int slotInBox = static_cast<int>(totalPokemonProcessed % 30);
         
-        PokemonChecksumResult result;
+        Generation3Utils::PokemonChecksumResult result;
         result.location = checksumPhysicalAddress;
         result.calculated = calculatedChecksum;
         result.stored = storedChecksum;
@@ -753,13 +629,13 @@ void ChecksumCalculator::calculateBoxPokemonChecksums(const Generation3Utils::Sa
         
         results.push_back(result);
         
-        logicalOffset += 80;
+        logicalOffset += Generation3Utils::BOX_POKEMON_SIZE;
         totalPokemonProcessed++;
     }
 }
 
 void ChecksumCalculator::calculateAllPokemonChecksums(const Generation3Utils::SaveBlock& saveBlock,
-                                                     std::vector<PokemonChecksumResult>& results,
+                                                     std::vector<Generation3Utils::PokemonChecksumResult>& results,
                                                      const std::string& saveBlockName) {
     results.clear();
     calculatePartyPokemonChecksums(saveBlock, results, saveBlockName);
@@ -1014,7 +890,7 @@ void ChecksumCalculator::render() {
             int maxVisibleLines = contentHeight / charHeight;
             
             // Count total invalid entries
-            std::vector<std::pair<std::string, const PokemonChecksumResult*>> allInvalid;
+            std::vector<std::pair<std::string, const Generation3Utils::PokemonChecksumResult*>> allInvalid;
             
             for (const auto& result : pokemonResultsSaveA) {
                 if (!result.valid) {
