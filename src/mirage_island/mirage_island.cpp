@@ -132,7 +132,7 @@ bool MirageIslandEditor::setGame(const std::string& game) {
 
 bool MirageIslandEditor::determineCurrentSave() {
     parseSaveBlock(0x000000, saveASections, saveAIndex);
-    parseSaveBlock(0x00E000, saveBSections, saveBIndex);
+    parseSaveBlock(Generation3Utils::GEN3_BLOCK_SIZE, saveBSections, saveBIndex);
     
     saveAIsCurrent = (saveAIndex >= saveBIndex);
     

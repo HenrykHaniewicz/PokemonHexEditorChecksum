@@ -246,6 +246,7 @@ protected:
     // ========================================================================
     bool showConfirmDialog(const ConfirmDialogConfig& config);
     bool showOverwriteConfirmDialog(const std::string& filename);
+    bool showOverwriteSensitiveDataConfirmDialog();
     bool showQuitConfirmDialog();
     
     // ========================================================================

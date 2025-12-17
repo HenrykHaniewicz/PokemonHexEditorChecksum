@@ -192,204 +192,204 @@ bool ChecksumCalculator::calculateChecksum() {
 // ============================================================================
 
 bool ChecksumCalculator::calculateChecksumPokemonRedBlue() {
-    redBlueBank1Start = 0x2598;
-    
-    if (isJapanese) {
-        // Japanese Red/Green has different Checksum range and location (yet to test Japanese Blue)
-        redBlueBank1End = 0x3593;
-        redBlueBank1ChecksumLocation = 0x3594;
-    } else {
-        // English Red/Blue
-        redBlueBank1End = 0x3522;
-        redBlueBank1ChecksumLocation = 0x3523;
-    }
-    
+    // Pull config from the new namespace layout
+    const Generation1Utils::ChecksumConfig config = Generation1Utils::getRedBlueYellowConfig(isJapanese);
+
+    // If you still want to keep the member variables in sync (optional)
+    redBlueBank1Start = config.start;
+    redBlueBank1End = config.end;
+    redBlueBank1ChecksumLocation = config.checksumLocation;
+
     if (0x7A52 >= fileSize) {
-        std::cerr << "Error: Address out of range (file size: 0x" 
+        std::cerr << "Error: Address out of range (file size: 0x"
                   << std::hex << fileSize << ", need at least 0x7A53)" << std::endl;
         return false;
     }
-    
+
     std::cout << "\n=== Pokemon Red/Blue Checksum Calculation ===" << std::endl;
     std::cout << "File: " << fileName << " (" << std::dec << fileSize << " bytes)" << std::endl;
-    
+
     // Bank 1
     std::cout << "\n--- Bank 1 ---" << std::endl;
-    std::cout << "Range: 0x" << HexUtils::toHexString(redBlueBank1Start, 4) 
-              << " - 0x" << HexUtils::toHexString(redBlueBank1End, 4) << std::endl;
-    
-    redBlueBank1Checksum = calculateRedBlue8BitChecksum(redBlueBank1Start, redBlueBank1End, redBlueBank1Sum);
-    redBlueBank1StoredChecksum = readU8(redBlueBank1ChecksumLocation);
+    std::cout << "Range: 0x" << HexUtils::toHexString(config.start, 4)
+              << " - 0x" << HexUtils::toHexString(config.end, 4) << std::endl;
+
+    redBlueBank1Checksum = calculateRedBlue8BitChecksum(config.start, config.end, redBlueBank1Sum);
+    redBlueBank1StoredChecksum = readU8(config.checksumLocation);
     redBlueBank1Matches = (redBlueBank1Checksum == redBlueBank1StoredChecksum);
-    
+
     std::cout << "Sum: 0x" << std::hex << redBlueBank1Sum << std::endl;
     std::cout << "Checksum: calc=0x" << HexUtils::toHexString(redBlueBank1Checksum, 2)
               << " stored=0x" << HexUtils::toHexString(redBlueBank1StoredChecksum, 2)
-              << " @ 0x" << HexUtils::toHexString(redBlueBank1ChecksumLocation, 4)
+              << " @ 0x" << HexUtils::toHexString(config.checksumLocation, 4)
               << (redBlueBank1Matches ? " OK" : " MISMATCH") << std::endl;
-    
+
     // Bank 2 (base address 0x4000)
     std::cout << "\n--- Bank 2 (base 0x4000) ---" << std::endl;
     calculateRedBlueBankChecksums(0x4000, redBlueBank2);
-    
+
     // Bank 3 (base address 0x6000)
     std::cout << "\n--- Bank 3 (base 0x6000) ---" << std::endl;
     calculateRedBlueBankChecksums(0x6000, redBlueBank3);
-    
+
     std::cout << "\n=============================================\n" << std::endl;
-    
+
     return true;
 }
 
+
 bool ChecksumCalculator::calculateChecksumPokemonGoldSilver() {
-    if (isJapanese) {
-        // Japanese Gold/Silver addresses
-        goldSilverStart1 = 0x2009;
-        goldSilverEnd1 = 0x2C8B;  // 0x2009 + 0x0C83 - 1
-        goldSilverChecksum1Location = 0x2D0D;
-        
-        // Checksum 2 is a single range in Japanese version
-        goldSilverRanges2 = {
-            {0x7209, 0x7E8B}  // 0x7209 + 0x0C83 - 1
-        };
-        goldSilverChecksum2Location = 0x7F0D;
-    } else {
-        // English Gold/Silver addresses
-        goldSilverStart1 = 0x2009;
-        goldSilverEnd1 = 0x2D68;
-        goldSilverChecksum1Location = 0x2D69;
-        
-        goldSilverRanges2 = {
-            {0x0C6B, 0x17EC},
-            {0x3D96, 0x3F3F},
-            {0x7E39, 0x7E6C}
-        };
-        goldSilverChecksum2Location = 0x7E6D;
-    }
-    
+    const Generation2Utils::ChecksumConfig config =
+        Generation2Utils::getGoldSilverConfig(isJapanese);
+
+    // Optional: keep existing member vars in sync (if other code relies on them)
+    goldSilverStart1 = config.start1;
+    goldSilverEnd1 = config.end1;
+    goldSilverChecksum1Location = config.checksumLocation1;
+    goldSilverRanges2 = config.ranges2;
+    goldSilverChecksum2Location = config.checksumLocation2;
+
     // Check file size
-    if (goldSilverChecksum2Location >= fileSize) {
-        std::cerr << "Error: Address out of range (file size: 0x" 
-                  << std::hex << fileSize << ", need at least 0x" << (goldSilverChecksum2Location + 2) << ")" << std::endl;
+    if (config.checksumLocation2 >= fileSize) {
+        std::cerr << "Error: Address out of range (file size: 0x"
+                  << std::hex << fileSize << ", need at least 0x"
+                  << (config.checksumLocation2 + 2) << ")" << std::endl;
         return false;
     }
-    
+
     std::cout << "\n=== Pokemon Gold/Silver Checksum Calculation";
     if (isJapanese) std::cout << " (Japanese)";
     std::cout << " ===" << std::endl;
     std::cout << "File: " << fileName << " (" << std::dec << fileSize << " bytes)" << std::endl;
-    
+
     // First checksum
     std::cout << "\n--- Checksum 1 ---" << std::endl;
-    std::cout << "Range: 0x" << HexUtils::toHexString(goldSilverStart1, 4) 
-              << " - 0x" << HexUtils::toHexString(goldSilverEnd1, 4) << std::endl;
-    std::cout << "Checksum location: 0x" << HexUtils::toHexString(goldSilverChecksum1Location, 4) << std::endl;
-    
-    goldSilverChecksum1 = calculateGBC16BitChecksum(goldSilverStart1, goldSilverEnd1, goldSilverTotalSum1);
-    goldSilverStoredChecksum1 = readU16LE(goldSilverChecksum1Location);
+    std::cout << "Range: 0x" << HexUtils::toHexString(config.start1, 4)
+              << " - 0x" << HexUtils::toHexString(config.end1, 4) << std::endl;
+    std::cout << "Checksum location: 0x" << HexUtils::toHexString(config.checksumLocation1, 4) << std::endl;
+
+    goldSilverChecksum1 = calculateGBC16BitChecksum(config.start1, config.end1, goldSilverTotalSum1);
+    goldSilverStoredChecksum1 = readU16LE(config.checksumLocation1);
     goldSilverChecksum1Matches = (goldSilverChecksum1 == goldSilverStoredChecksum1);
-    
+
     std::cout << "Sum of range: 0x" << std::hex << goldSilverTotalSum1 << std::endl;
     std::cout << "*** CHECKSUM 1: calc=0x" << HexUtils::toHexString(goldSilverChecksum1, 4)
               << " stored=0x" << HexUtils::toHexString(goldSilverStoredChecksum1, 4)
               << " (bytes: 0x" << formatReversedBytes16(goldSilverChecksum1) << ")"
               << (goldSilverChecksum1Matches ? " OK" : " MISMATCH") << " ***" << std::endl;
-    
+
     // Second checksum
     if (isJapanese) {
         std::cout << "\n--- Checksum 2 ---" << std::endl;
     } else {
         std::cout << "\n--- Checksum 2 (non-contiguous) ---" << std::endl;
     }
-    
-    for (const auto& range : goldSilverRanges2) {
-        std::cout << "Range: 0x" << HexUtils::toHexString(range.first, 4) 
+
+    for (const auto& range : config.ranges2) {
+        std::cout << "Range: 0x" << HexUtils::toHexString(range.first, 4)
                   << " - 0x" << HexUtils::toHexString(range.second, 4) << std::endl;
     }
-    std::cout << "Checksum location: 0x" << HexUtils::toHexString(goldSilverChecksum2Location, 4) << std::endl;
-    
-    goldSilverChecksum2 = calculateGBC16BitChecksumMultiRange(goldSilverRanges2, goldSilverTotalSum2);
-    goldSilverStoredChecksum2 = readU16LE(goldSilverChecksum2Location);
+    std::cout << "Checksum location: 0x" << HexUtils::toHexString(config.checksumLocation2, 4) << std::endl;
+
+    goldSilverChecksum2 = calculateGBC16BitChecksumMultiRange(config.ranges2, goldSilverTotalSum2);
+    goldSilverStoredChecksum2 = readU16LE(config.checksumLocation2);
     goldSilverChecksum2Matches = (goldSilverChecksum2 == goldSilverStoredChecksum2);
-    
+
     std::cout << "Sum of ranges: 0x" << std::hex << goldSilverTotalSum2 << std::endl;
     std::cout << "*** CHECKSUM 2: calc=0x" << HexUtils::toHexString(goldSilverChecksum2, 4)
               << " stored=0x" << HexUtils::toHexString(goldSilverStoredChecksum2, 4)
               << " (bytes: 0x" << formatReversedBytes16(goldSilverChecksum2) << ")"
               << (goldSilverChecksum2Matches ? " OK" : " MISMATCH") << " ***" << std::endl;
+
+    const bool goldSilverChecksumsMatchEachOther = (goldSilverChecksum1 == goldSilverChecksum2);
+    std::cout << "\n=============================================" << std::endl;
+
+    std::cout << "*** CHECKSUM 1 vs 2: "
+              << (goldSilverChecksumsMatchEachOther ? "MATCH" : "MISMATCH")
+              << " ***" << std::endl;
+
     std::cout << "=============================================\n" << std::endl;
-    
+
     return true;
 }
 
 bool ChecksumCalculator::calculateChecksumPokemonCrystal() {
-    crystalStart1 = 0x2009;
-    crystalChecksum1Location = 0x2D0D;
-    
-    if (isJapanese) {
-        // Japanese Crystal has different Checksum 2 range
-        crystalEnd1 = 0x2AE2;
-        crystalStart2 = 0x7209;
-        crystalEnd2 = 0x7CE2;
-        crystalChecksum2Location = 0x7F0D;
-    } else {
-        // Regular Crystal
-        crystalEnd1 = 0x2B82;
-        crystalStart2 = 0x1209;
-        crystalEnd2 = 0x1D82;
-        crystalChecksum2Location = 0x1F0D;
-    }
-    
-    if (crystalEnd1 >= fileSize || crystalEnd2 >= fileSize) {
-        std::cerr << "Error: Address out of range (file size: 0x" 
+    const Generation2Utils::ChecksumConfig config =
+        Generation2Utils::getCrystalConfig(isJapanese);
+
+    // Optional: keep existing member vars in sync (if other code relies on them)
+    crystalStart1 = config.start1;
+    crystalEnd1 = config.end1;
+    crystalChecksum1Location = config.checksumLocation1;
+
+    // Crystal checksum 2 is always one range in your config
+    crystalStart2 = config.ranges2.front().first;
+    crystalEnd2   = config.ranges2.front().second;
+    crystalChecksum2Location = config.checksumLocation2;
+
+    // Safer size check: ensure both checksum locations and range ends are in-bounds
+    const size_t maxEnd2 = config.ranges2.empty() ? 0 : config.ranges2.front().second;
+    if (config.end1 >= fileSize || maxEnd2 >= fileSize || config.checksumLocation2 + 1 >= fileSize) {
+        std::cerr << "Error: Address out of range (file size: 0x"
                   << std::hex << fileSize << ")" << std::endl;
         return false;
     }
-    
+
     std::cout << "\n=== Pokemon Crystal Checksum Calculation";
     if (isJapanese) std::cout << " (Japanese)";
     std::cout << " ===" << std::endl;
     std::cout << "File: " << fileName << " (" << std::dec << fileSize << " bytes)" << std::endl;
-    
+
     // First checksum
     std::cout << "\n--- Checksum 1 ---" << std::endl;
-    std::cout << "Range: 0x" << HexUtils::toHexString(crystalStart1, 4) 
-              << " - 0x" << HexUtils::toHexString(crystalEnd1, 4) << std::endl;
-    std::cout << "Checksum location: 0x" << HexUtils::toHexString(crystalChecksum1Location, 4) << std::endl;
-    
-    crystalChecksum1 = calculateGBC16BitChecksum(crystalStart1, crystalEnd1, crystalTotalSum1);
-    crystalStoredChecksum1 = readU16LE(crystalChecksum1Location);
+    std::cout << "Range: 0x" << HexUtils::toHexString(config.start1, 4)
+              << " - 0x" << HexUtils::toHexString(config.end1, 4) << std::endl;
+    std::cout << "Checksum location: 0x" << HexUtils::toHexString(config.checksumLocation1, 4) << std::endl;
+
+    crystalChecksum1 = calculateGBC16BitChecksum(config.start1, config.end1, crystalTotalSum1);
+    crystalStoredChecksum1 = readU16LE(config.checksumLocation1);
     crystalChecksum1Matches = (crystalChecksum1 == crystalStoredChecksum1);
-    
+
     std::cout << "Sum of range: 0x" << std::hex << crystalTotalSum1 << std::endl;
     std::cout << "*** CHECKSUM 1: calc=0x" << HexUtils::toHexString(crystalChecksum1, 4)
               << " stored=0x" << HexUtils::toHexString(crystalStoredChecksum1, 4)
               << " (bytes: 0x" << formatReversedBytes16(crystalChecksum1) << ")"
               << (crystalChecksum1Matches ? " OK" : " MISMATCH") << " ***" << std::endl;
-    
-    // Second checksum
+
+    // Second checksum (single range from config.ranges2)
     std::cout << "\n--- Checksum 2 ---" << std::endl;
-    std::cout << "Range: 0x" << HexUtils::toHexString(crystalStart2, 4) 
-              << " - 0x" << HexUtils::toHexString(crystalEnd2, 4) << std::endl;
-    std::cout << "Checksum location: 0x" << HexUtils::toHexString(crystalChecksum2Location, 4) << std::endl;
-    
-    crystalChecksum2 = calculateGBC16BitChecksum(crystalStart2, crystalEnd2, crystalTotalSum2);
-    crystalStoredChecksum2 = readU16LE(crystalChecksum2Location);
+    std::cout << "Range: 0x" << HexUtils::toHexString(config.ranges2.front().first, 4)
+              << " - 0x" << HexUtils::toHexString(config.ranges2.front().second, 4) << std::endl;
+    std::cout << "Checksum location: 0x" << HexUtils::toHexString(config.checksumLocation2, 4) << std::endl;
+
+    crystalChecksum2 = calculateGBC16BitChecksum(config.ranges2.front().first,
+                                                config.ranges2.front().second,
+                                                crystalTotalSum2);
+    crystalStoredChecksum2 = readU16LE(config.checksumLocation2);
     crystalChecksum2Matches = (crystalChecksum2 == crystalStoredChecksum2);
-    
+
     std::cout << "Sum of range: 0x" << std::hex << crystalTotalSum2 << std::endl;
     std::cout << "*** CHECKSUM 2: calc=0x" << HexUtils::toHexString(crystalChecksum2, 4)
               << " stored=0x" << HexUtils::toHexString(crystalStoredChecksum2, 4)
               << " (bytes: 0x" << formatReversedBytes16(crystalChecksum2) << ")"
               << (crystalChecksum2Matches ? " OK" : " MISMATCH") << " ***" << std::endl;
+
+
+    const bool crystalChecksumsMatchEachOther = (crystalChecksum1 == crystalChecksum2);
+    std::cout << "\n=============================================" << std::endl;
+
+    std::cout << "*** CHECKSUM 1 vs 2: "
+              << (crystalChecksumsMatchEachOther ? "MATCH" : "MISMATCH")
+              << " ***" << std::endl;
     std::cout << "=============================================\n" << std::endl;
-    
+
     return true;
 }
 
+
 bool ChecksumCalculator::calculateChecksumPokemonGeneration3() {
     // Check file size (need at least 128KB for full save structure)
-    const size_t requiredSize = 0x20000;
+    const size_t requiredSize = Generation3Utils::GEN3_SAVE_SIZE;
     
     if (fileSize < requiredSize) {
         std::cerr << "Error: File too small (size: 0x" << std::hex << fileSize 
@@ -406,7 +406,7 @@ bool ChecksumCalculator::calculateChecksumPokemonGeneration3() {
     calculateGen3SaveBlock(0x000000, gen3SaveA, "Save A");
     
     // Calculate checksums for Save B (base 0x00E000)
-    calculateGen3SaveBlock(0x00E000, gen3SaveB, "Save B");
+    calculateGen3SaveBlock(Generation3Utils::GEN3_BLOCK_SIZE, gen3SaveB, "Save B");
     
     // Determine which save is current
     gen3SaveAIsCurrent = (gen3SaveA.saveIndex > gen3SaveB.saveIndex);

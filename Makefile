@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Wextra -I. -MMD -MP
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -I. -MMD -MP
 LDFLAGS = -lSDL3 -lSDL3_ttf
 
 # Directories

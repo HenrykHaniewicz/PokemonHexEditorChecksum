@@ -923,14 +923,12 @@ void PokemonBagEditor::updateChecksum() {
 }
 
 void PokemonBagEditor::updateChecksumGen1() {
-    size_t start = 0x2598;
-    size_t end = isJapanese ? 0x3593 : 0x3522;
-    size_t checksumPos = isJapanese ? 0x3594 : 0x3523;
+    Generation1Utils::ChecksumConfig config = Generation1Utils::getRedBlueYellowConfig(isJapanese);
     
-    if (end >= fileSize || checksumPos >= fileSize) return;
+    if (config.end >= fileSize || config.checksumLocation >= fileSize) return;
     
-    uint8_t checksum = Generation1Utils::calculate8BitChecksum(fileBuffer, start, end);
-    DataUtils::writeU8(fileBuffer, checksumPos, checksum);
+    uint8_t checksum = Generation1Utils::calculate8BitChecksum(fileBuffer, config.start, config.end);
+    DataUtils::writeU8(fileBuffer, config.checksumLocation, checksum);
 }
 
 void PokemonBagEditor::updateChecksumGen2() {

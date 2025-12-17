@@ -34,7 +34,34 @@ enum Gen1Type : uint8_t {
 };
 
 // ============================================================================
-// Pokémon Data Structure (Gen 1 & Gen 2)
+// Type Codes (Gen 3)  (different numbering than Gen 1/2)
+// ============================================================================
+
+enum Gen3Type : uint8_t {
+    G3_NORMAL   = 0x00,
+    G3_FIGHTING = 0x01,
+    G3_FLYING   = 0x02,
+    G3_POISON   = 0x03,
+    G3_GROUND   = 0x04,
+    G3_ROCK     = 0x05,
+    G3_BUG      = 0x06,
+    G3_GHOST    = 0x07,
+    G3_STEEL    = 0x08,
+    G3_MYSTERY  = 0x09,   // "???"
+    G3_FIRE     = 0x0A,
+    G3_WATER    = 0x0B,
+    G3_GRASS    = 0x0C,
+    G3_ELECTRIC = 0x0D,
+    G3_PSYCHIC  = 0x0E,
+    G3_ICE      = 0x0F,
+    G3_DRAGON   = 0x10,
+    G3_DARK     = 0x11,
+
+    G3_UNKNOWN  = 0xFF
+};
+
+// ============================================================================
+// Pokémon Data Structure (Gen 1/2/3)
 // ============================================================================
 
 struct PokemonInfo {
@@ -504,98 +531,591 @@ static const std::unordered_map<uint8_t, PokemonInfo> GEN2_POKEMON = {
 };
 
 // ============================================================================
+// Generation 3 Pokémon Table (indices per your provided list)
+// Gen3 type ids are Gen3Type (0..17), NOT Gen1Type.
+// Note: 0x001..0x0FB are looked up from GEN2 and converted on the fly.
+// ============================================================================
+
+static const std::unordered_map<uint16_t, PokemonInfo> GEN3_POKEMON = {
+    {0x000, {"??????????", G3_NORMAL, G3_NORMAL}},
+
+    {0x01, {"Bulbasaur", TYPE_GRASS, TYPE_POISON}},
+    {0x02, {"Ivysaur", TYPE_GRASS, TYPE_POISON}},
+    {0x03, {"Venusaur", TYPE_GRASS, TYPE_POISON}},
+    {0x04, {"Charmander", TYPE_FIRE, TYPE_FIRE}},
+    {0x05, {"Charmeleon", TYPE_FIRE, TYPE_FIRE}},
+    {0x06, {"Charizard", TYPE_FIRE, TYPE_FLYING}},
+    {0x07, {"Squirtle", TYPE_WATER, TYPE_WATER}},
+    {0x08, {"Wartortle", TYPE_WATER, TYPE_WATER}},
+    {0x09, {"Blastoise", TYPE_WATER, TYPE_WATER}},
+    {0x0A, {"Caterpie", TYPE_BUG, TYPE_BUG}},
+    {0x0B, {"Metapod", TYPE_BUG, TYPE_BUG}},
+    {0x0C, {"Butterfree", TYPE_BUG, TYPE_FLYING}},
+    {0x0D, {"Weedle", TYPE_BUG, TYPE_POISON}},
+    {0x0E, {"Kakuna", TYPE_BUG, TYPE_POISON}},
+    {0x0F, {"Beedrill", TYPE_BUG, TYPE_POISON}},
+    {0x10, {"Pidgey", TYPE_NORMAL, TYPE_FLYING}},
+    {0x11, {"Pidgeotto", TYPE_NORMAL, TYPE_FLYING}},
+    {0x12, {"Pidgeot", TYPE_NORMAL, TYPE_FLYING}},
+    {0x13, {"Rattata", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x14, {"Raticate", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x15, {"Spearow", TYPE_NORMAL, TYPE_FLYING}},
+    {0x16, {"Fearow", TYPE_NORMAL, TYPE_FLYING}},
+    {0x17, {"Ekans", TYPE_POISON, TYPE_POISON}},
+    {0x18, {"Arbok", TYPE_POISON, TYPE_POISON}},
+    {0x19, {"Pikachu", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x1A, {"Raichu", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x1B, {"Sandshrew", TYPE_GROUND, TYPE_GROUND}},
+    {0x1C, {"Sandslash", TYPE_GROUND, TYPE_GROUND}},
+    {0x1D, {"Nidoran♀", TYPE_POISON, TYPE_POISON}},
+    {0x1E, {"Nidorina", TYPE_POISON, TYPE_POISON}},
+    {0x1F, {"Nidoqueen", TYPE_POISON, TYPE_GROUND}},
+    {0x20, {"Nidoran♂", TYPE_POISON, TYPE_POISON}},
+    {0x21, {"Nidorino", TYPE_POISON, TYPE_POISON}},
+    {0x22, {"Nidoking", TYPE_POISON, TYPE_GROUND}},
+    {0x23, {"Clefairy", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x24, {"Clefable", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x25, {"Vulpix", TYPE_FIRE, TYPE_FIRE}},
+    {0x26, {"Ninetales", TYPE_FIRE, TYPE_FIRE}},
+    {0x27, {"Jigglypuff", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x28, {"Wigglytuff", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x29, {"Zubat", TYPE_POISON, TYPE_FLYING}},
+    {0x2A, {"Golbat", TYPE_POISON, TYPE_FLYING}},
+    {0x2B, {"Oddish", TYPE_GRASS, TYPE_POISON}},
+    {0x2C, {"Gloom", TYPE_GRASS, TYPE_POISON}},
+    {0x2D, {"Vileplume", TYPE_GRASS, TYPE_POISON}},
+    {0x2E, {"Paras", TYPE_BUG, TYPE_GRASS}},
+    {0x2F, {"Parasect", TYPE_BUG, TYPE_GRASS}},
+    {0x30, {"Venonat", TYPE_BUG, TYPE_POISON}},
+    {0x31, {"Venomoth", TYPE_BUG, TYPE_POISON}},
+    {0x32, {"Diglett", TYPE_GROUND, TYPE_GROUND}},
+    {0x33, {"Dugtrio", TYPE_GROUND, TYPE_GROUND}},
+    {0x34, {"Meowth", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x35, {"Persian", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x36, {"Psyduck", TYPE_WATER, TYPE_WATER}},
+    {0x37, {"Golduck", TYPE_WATER, TYPE_WATER}},
+    {0x38, {"Mankey", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x39, {"Primeape", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x3A, {"Growlithe", TYPE_FIRE, TYPE_FIRE}},
+    {0x3B, {"Arcanine", TYPE_FIRE, TYPE_FIRE}},
+    {0x3C, {"Poliwag", TYPE_WATER, TYPE_WATER}},
+    {0x3D, {"Poliwhirl", TYPE_WATER, TYPE_WATER}},
+    {0x3E, {"Poliwrath", TYPE_WATER, TYPE_FIGHTING}},
+    {0x3F, {"Abra", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x40, {"Kadabra", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x41, {"Alakazam", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x42, {"Machop", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x43, {"Machoke", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x44, {"Machamp", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x45, {"Bellsprout", TYPE_GRASS, TYPE_POISON}},
+    {0x46, {"Weepinbell", TYPE_GRASS, TYPE_POISON}},
+    {0x47, {"Victreebel", TYPE_GRASS, TYPE_POISON}},
+    {0x48, {"Tentacool", TYPE_WATER, TYPE_POISON}},
+    {0x49, {"Tentacruel", TYPE_WATER, TYPE_POISON}},
+    {0x4A, {"Geodude", TYPE_ROCK, TYPE_GROUND}},
+    {0x4B, {"Graveler", TYPE_ROCK, TYPE_GROUND}},
+    {0x4C, {"Golem", TYPE_ROCK, TYPE_GROUND}},
+    {0x4D, {"Ponyta", TYPE_FIRE, TYPE_FIRE}},
+    {0x4E, {"Rapidash", TYPE_FIRE, TYPE_FIRE}},
+    {0x4F, {"Slowpoke", TYPE_WATER, TYPE_PSYCHIC}},
+    {0x50, {"Slowbro", TYPE_WATER, TYPE_PSYCHIC}},
+    {0x51, {"Magnemite", TYPE_ELECTRIC, TYPE_STEEL}},
+    {0x52, {"Magneton", TYPE_ELECTRIC, TYPE_STEEL}},
+    {0x53, {"Farfetch'd", TYPE_NORMAL, TYPE_FLYING}},
+    {0x54, {"Doduo", TYPE_NORMAL, TYPE_FLYING}},
+    {0x55, {"Dodrio", TYPE_NORMAL, TYPE_FLYING}},
+    {0x56, {"Seel", TYPE_WATER, TYPE_WATER}},
+    {0x57, {"Dewgong", TYPE_WATER, TYPE_ICE}},
+    {0x58, {"Grimer", TYPE_POISON, TYPE_POISON}},
+    {0x59, {"Muk", TYPE_POISON, TYPE_POISON}},
+    {0x5A, {"Shellder", TYPE_WATER, TYPE_WATER}},
+    {0x5B, {"Cloyster", TYPE_WATER, TYPE_ICE}},
+    {0x5C, {"Gastly", TYPE_GHOST, TYPE_POISON}},
+    {0x5D, {"Haunter", TYPE_GHOST, TYPE_POISON}},
+    {0x5E, {"Gengar", TYPE_GHOST, TYPE_POISON}},
+    {0x5F, {"Onix", TYPE_ROCK, TYPE_GROUND}},
+    {0x60, {"Drowzee", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x61, {"Hypno", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x62, {"Krabby", TYPE_WATER, TYPE_WATER}},
+    {0x63, {"Kingler", TYPE_WATER, TYPE_WATER}},
+    {0x64, {"Voltorb", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x65, {"Electrode", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x66, {"Exeggcute", TYPE_GRASS, TYPE_PSYCHIC}},
+    {0x67, {"Exeggutor", TYPE_GRASS, TYPE_PSYCHIC}},
+    {0x68, {"Cubone", TYPE_GROUND, TYPE_GROUND}},
+    {0x69, {"Marowak", TYPE_GROUND, TYPE_GROUND}},
+    {0x6A, {"Hitmonlee", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x6B, {"Hitmonchan", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0x6C, {"Lickitung", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x6D, {"Koffing", TYPE_POISON, TYPE_POISON}},
+    {0x6E, {"Weezing", TYPE_POISON, TYPE_POISON}},
+    {0x6F, {"Rhyhorn", TYPE_GROUND, TYPE_ROCK}},
+    {0x70, {"Rhydon", TYPE_GROUND, TYPE_ROCK}},
+    {0x71, {"Chansey", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x72, {"Tangela", TYPE_GRASS, TYPE_GRASS}},
+    {0x73, {"Kangaskhan", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x74, {"Horsea", TYPE_WATER, TYPE_WATER}},
+    {0x75, {"Seadra", TYPE_WATER, TYPE_WATER}},
+    {0x76, {"Goldeen", TYPE_WATER, TYPE_WATER}},
+    {0x77, {"Seaking", TYPE_WATER, TYPE_WATER}},
+    {0x78, {"Staryu", TYPE_WATER, TYPE_WATER}},
+    {0x79, {"Starmie", TYPE_WATER, TYPE_PSYCHIC}},
+    {0x7A, {"Mr. Mime", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x7B, {"Scyther", TYPE_BUG, TYPE_FLYING}},
+    {0x7C, {"Jynx", TYPE_ICE, TYPE_PSYCHIC}},
+    {0x7D, {"Electabuzz", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x7E, {"Magmar", TYPE_FIRE, TYPE_FIRE}},
+    {0x7F, {"Pinsir", TYPE_BUG, TYPE_BUG}},
+    {0x80, {"Tauros", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x81, {"Magikarp", TYPE_WATER, TYPE_WATER}},
+    {0x82, {"Gyarados", TYPE_WATER, TYPE_FLYING}},
+    {0x83, {"Lapras", TYPE_WATER, TYPE_ICE}},
+    {0x84, {"Ditto", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x85, {"Eevee", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x86, {"Vaporeon", TYPE_WATER, TYPE_WATER}},
+    {0x87, {"Jolteon", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0x88, {"Flareon", TYPE_FIRE, TYPE_FIRE}},
+    {0x89, {"Porygon", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x8A, {"Omanyte", TYPE_ROCK, TYPE_WATER}},
+    {0x8B, {"Omastar", TYPE_ROCK, TYPE_WATER}},
+    {0x8C, {"Kabuto", TYPE_ROCK, TYPE_WATER}},
+    {0x8D, {"Kabutops", TYPE_ROCK, TYPE_WATER}},
+    {0x8E, {"Aerodactyl", TYPE_ROCK, TYPE_FLYING}},
+    {0x8F, {"Snorlax", TYPE_NORMAL, TYPE_NORMAL}},
+    {0x90, {"Articuno", TYPE_ICE, TYPE_FLYING}},
+    {0x91, {"Zapdos", TYPE_ELECTRIC, TYPE_FLYING}},
+    {0x92, {"Moltres", TYPE_FIRE, TYPE_FLYING}},
+    {0x93, {"Dratini", TYPE_DRAGON, TYPE_DRAGON}},
+    {0x94, {"Dragonair", TYPE_DRAGON, TYPE_DRAGON}},
+    {0x95, {"Dragonite", TYPE_DRAGON, TYPE_FLYING}},
+    {0x96, {"Mewtwo", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x97, {"Mew", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0x98, {"Chikorita", TYPE_GRASS, TYPE_GRASS}},
+    {0x99, {"Bayleef", TYPE_GRASS, TYPE_GRASS}},
+    {0x9A, {"Meganium", TYPE_GRASS, TYPE_GRASS}},
+    {0x9B, {"Cyndaquil", TYPE_FIRE, TYPE_FIRE}},
+    {0x9C, {"Quilava", TYPE_FIRE, TYPE_FIRE}},
+    {0x9D, {"Typhlosion", TYPE_FIRE, TYPE_FIRE}},
+    {0x9E, {"Totodile", TYPE_WATER, TYPE_WATER}},
+    {0x9F, {"Croconaw", TYPE_WATER, TYPE_WATER}},
+    {0xA0, {"Feraligatr", TYPE_WATER, TYPE_WATER}},
+    {0xA1, {"Sentret", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xA2, {"Furret", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xA3, {"Hoothoot", TYPE_NORMAL, TYPE_FLYING}},
+    {0xA4, {"Noctowl", TYPE_NORMAL, TYPE_FLYING}},
+    {0xA5, {"Ledyba", TYPE_BUG, TYPE_FLYING}},
+    {0xA6, {"Ledian", TYPE_BUG, TYPE_FLYING}},
+    {0xA7, {"Spinarak", TYPE_BUG, TYPE_POISON}},
+    {0xA8, {"Ariados", TYPE_BUG, TYPE_POISON}},
+    {0xA9, {"Crobat", TYPE_POISON, TYPE_FLYING}},
+    {0xAA, {"Chinchou", TYPE_WATER, TYPE_ELECTRIC}},
+    {0xAB, {"Lanturn", TYPE_WATER, TYPE_ELECTRIC}},
+    {0xAC, {"Pichu", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xAD, {"Cleffa", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xAE, {"Igglybuff", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xAF, {"Togepi", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xB0, {"Togetic", TYPE_NORMAL, TYPE_FLYING}},
+    {0xB1, {"Natu", TYPE_PSYCHIC, TYPE_FLYING}},
+    {0xB2, {"Xatu", TYPE_PSYCHIC, TYPE_FLYING}},
+    {0xB3, {"Mareep", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xB4, {"Flaaffy", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xB5, {"Ampharos", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xB6, {"Bellossom", TYPE_GRASS, TYPE_GRASS}},
+    {0xB7, {"Marill", TYPE_WATER, TYPE_WATER}},
+    {0xB8, {"Azumarill", TYPE_WATER, TYPE_WATER}},
+    {0xB9, {"Sudowoodo", TYPE_ROCK, TYPE_ROCK}},
+    {0xBA, {"Politoed", TYPE_WATER, TYPE_WATER}},
+    {0xBB, {"Hoppip", TYPE_GRASS, TYPE_FLYING}},
+    {0xBC, {"Skiploom", TYPE_GRASS, TYPE_FLYING}},
+    {0xBD, {"Jumpluff", TYPE_GRASS, TYPE_FLYING}},
+    {0xBE, {"Aipom", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xBF, {"Sunkern", TYPE_GRASS, TYPE_GRASS}},
+    {0xC0, {"Sunflora", TYPE_GRASS, TYPE_GRASS}},
+    {0xC1, {"Yanma", TYPE_BUG, TYPE_FLYING}},
+    {0xC2, {"Wooper", TYPE_WATER, TYPE_GROUND}},
+    {0xC3, {"Quagsire", TYPE_WATER, TYPE_GROUND}},
+    {0xC4, {"Espeon", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0xC5, {"Umbreon", TYPE_DARK, TYPE_DARK}},
+    {0xC6, {"Murkrow", TYPE_DARK, TYPE_FLYING}},
+    {0xC7, {"Slowking", TYPE_WATER, TYPE_PSYCHIC}},
+    {0xC8, {"Misdreavus", TYPE_GHOST, TYPE_GHOST}},
+    {0xC9, {"Unown", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0xCA, {"Wobbuffet", TYPE_PSYCHIC, TYPE_PSYCHIC}},
+    {0xCB, {"Girafarig", TYPE_NORMAL, TYPE_PSYCHIC}},
+    {0xCC, {"Pineco", TYPE_BUG, TYPE_BUG}},
+    {0xCD, {"Forretress", TYPE_BUG, TYPE_STEEL}},
+    {0xCE, {"Dunsparce", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xCF, {"Gligar", TYPE_GROUND, TYPE_FLYING}},
+    {0xD0, {"Steelix", TYPE_STEEL, TYPE_GROUND}},
+    {0xD1, {"Snubbull", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xD2, {"Granbull", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xD3, {"Qwilfish", TYPE_WATER, TYPE_POISON}},
+    {0xD4, {"Scizor", TYPE_BUG, TYPE_STEEL}},
+    {0xD5, {"Shuckle", TYPE_BUG, TYPE_ROCK}},
+    {0xD6, {"Heracross", TYPE_BUG, TYPE_FIGHTING}},
+    {0xD7, {"Sneasel", TYPE_DARK, TYPE_ICE}},
+    {0xD8, {"Teddiursa", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xD9, {"Ursaring", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xDA, {"Slugma", TYPE_FIRE, TYPE_FIRE}},
+    {0xDB, {"Magcargo", TYPE_FIRE, TYPE_ROCK}},
+    {0xDC, {"Swinub", TYPE_ICE, TYPE_GROUND}},
+    {0xDD, {"Piloswine", TYPE_ICE, TYPE_GROUND}},
+    {0xDE, {"Corsola", TYPE_WATER, TYPE_ROCK}},
+    {0xDF, {"Remoraid", TYPE_WATER, TYPE_WATER}},
+    {0xE0, {"Octillery", TYPE_WATER, TYPE_WATER}},
+    {0xE1, {"Delibird", TYPE_ICE, TYPE_FLYING}},
+    {0xE2, {"Mantine", TYPE_WATER, TYPE_FLYING}},
+    {0xE3, {"Skarmory", TYPE_STEEL, TYPE_FLYING}},
+    {0xE4, {"Houndour", TYPE_DARK, TYPE_FIRE}},
+    {0xE5, {"Houndoom", TYPE_DARK, TYPE_FIRE}},
+    {0xE6, {"Kingdra", TYPE_WATER, TYPE_DRAGON}},
+    {0xE7, {"Phanpy", TYPE_GROUND, TYPE_GROUND}},
+    {0xE8, {"Donphan", TYPE_GROUND, TYPE_GROUND}},
+    {0xE9, {"Porygon2", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xEA, {"Stantler", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xEB, {"Smeargle", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xEC, {"Tyrogue", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0xED, {"Hitmontop", TYPE_FIGHTING, TYPE_FIGHTING}},
+    {0xEE, {"Smoochum", TYPE_ICE, TYPE_PSYCHIC}},
+    {0xEF, {"Elekid", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xF0, {"Magby", TYPE_FIRE, TYPE_FIRE}},
+    {0xF1, {"Miltank", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xF2, {"Blissey", TYPE_NORMAL, TYPE_NORMAL}},
+    {0xF3, {"Raikou", TYPE_ELECTRIC, TYPE_ELECTRIC}},
+    {0xF4, {"Entei", TYPE_FIRE, TYPE_FIRE}},
+    {0xF5, {"Suicune", TYPE_WATER, TYPE_WATER}},
+    {0xF6, {"Larvitar", TYPE_ROCK, TYPE_GROUND}},
+    {0xF7, {"Pupitar", TYPE_ROCK, TYPE_GROUND}},
+    {0xF8, {"Tyranitar", TYPE_ROCK, TYPE_DARK}},
+    {0xF9, {"Lugia", TYPE_PSYCHIC, TYPE_FLYING}},
+    {0xFA, {"Ho-Oh", TYPE_FIRE, TYPE_FLYING}},
+    {0xFB, {"Celebi", TYPE_PSYCHIC, TYPE_GRASS}},
+
+    // Placeholders (Normal)
+    {0x0FC, {"?", G3_NORMAL, G3_NORMAL}}, {0x0FD, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x0FE, {"?", G3_NORMAL, G3_NORMAL}}, {0x0FF, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x100, {"?", G3_NORMAL, G3_NORMAL}}, {0x101, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x102, {"?", G3_NORMAL, G3_NORMAL}}, {0x103, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x104, {"?", G3_NORMAL, G3_NORMAL}}, {0x105, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x106, {"?", G3_NORMAL, G3_NORMAL}}, {0x107, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x108, {"?", G3_NORMAL, G3_NORMAL}}, {0x109, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x10A, {"?", G3_NORMAL, G3_NORMAL}}, {0x10B, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x10C, {"?", G3_NORMAL, G3_NORMAL}}, {0x10D, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x10E, {"?", G3_NORMAL, G3_NORMAL}}, {0x10F, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x110, {"?", G3_NORMAL, G3_NORMAL}}, {0x111, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x112, {"?", G3_NORMAL, G3_NORMAL}}, {0x113, {"?", G3_NORMAL, G3_NORMAL}},
+    {0x114, {"?", G3_NORMAL, G3_NORMAL}},
+
+    // Gen 3 block (0x115..0x19B)
+    {0x115, {"Treecko", G3_GRASS, G3_GRASS}},
+    {0x116, {"Grovyle", G3_GRASS, G3_GRASS}},
+    {0x117, {"Sceptile", G3_GRASS, G3_GRASS}},
+    {0x118, {"Torchic", G3_FIRE, G3_FIRE}},
+    {0x119, {"Combusken", G3_FIRE, G3_FIGHTING}},
+    {0x11A, {"Blaziken", G3_FIRE, G3_FIGHTING}},
+    {0x11B, {"Mudkip", G3_WATER, G3_WATER}},
+    {0x11C, {"Marshtomp", G3_WATER, G3_GROUND}},
+    {0x11D, {"Swampert", G3_WATER, G3_GROUND}},
+    {0x11E, {"Poochyena", G3_DARK, G3_DARK}},
+    {0x11F, {"Mightyena", G3_DARK, G3_DARK}},
+    {0x120, {"Zigzagoon", G3_NORMAL, G3_NORMAL}},
+    {0x121, {"Linoone", G3_NORMAL, G3_NORMAL}},
+    {0x122, {"Wurmple", G3_BUG, G3_BUG}},
+    {0x123, {"Silcoon", G3_BUG, G3_BUG}},
+    {0x124, {"Beautifly", G3_BUG, G3_FLYING}},
+    {0x125, {"Cascoon", G3_BUG, G3_BUG}},
+    {0x126, {"Dustox", G3_BUG, G3_POISON}},
+    {0x127, {"Lotad", G3_WATER, G3_GRASS}},
+    {0x128, {"Lombre", G3_WATER, G3_GRASS}},
+    {0x129, {"Ludicolo", G3_WATER, G3_GRASS}},
+    {0x12A, {"Seedot", G3_GRASS, G3_GRASS}},
+    {0x12B, {"Nuzleaf", G3_GRASS, G3_DARK}},
+    {0x12C, {"Shiftry", G3_GRASS, G3_DARK}},
+    {0x12D, {"Nincada", G3_BUG, G3_GROUND}},
+    {0x12E, {"Ninjask", G3_BUG, G3_FLYING}},
+    {0x12F, {"Shedinja", G3_BUG, G3_GHOST}},
+    {0x130, {"Taillow", G3_NORMAL, G3_FLYING}},
+    {0x131, {"Swellow", G3_NORMAL, G3_FLYING}},
+    {0x132, {"Shroomish", G3_GRASS, G3_GRASS}},
+    {0x133, {"Breloom", G3_GRASS, G3_FIGHTING}},
+    {0x134, {"Spinda", G3_NORMAL, G3_NORMAL}},
+    {0x135, {"Wingull", G3_WATER, G3_FLYING}},
+    {0x136, {"Pelipper", G3_WATER, G3_FLYING}},
+    {0x137, {"Surskit", G3_BUG, G3_WATER}},
+    {0x138, {"Masquerain", G3_BUG, G3_FLYING}},
+    {0x139, {"Wailmer", G3_WATER, G3_WATER}},
+    {0x13A, {"Wailord", G3_WATER, G3_WATER}},
+    {0x13B, {"Skitty", G3_NORMAL, G3_NORMAL}},
+    {0x13C, {"Delcatty", G3_NORMAL, G3_NORMAL}},
+    {0x13D, {"Kecleon", G3_NORMAL, G3_NORMAL}},
+    {0x13E, {"Baltoy", G3_GROUND, G3_PSYCHIC}},
+    {0x13F, {"Claydol", G3_GROUND, G3_PSYCHIC}},
+    {0x140, {"Nosepass", G3_ROCK, G3_ROCK}},
+    {0x141, {"Torkoal", G3_FIRE, G3_FIRE}},
+    {0x142, {"Sableye", G3_DARK, G3_GHOST}},
+    {0x143, {"Barboach", G3_WATER, G3_GROUND}},
+    {0x144, {"Whiscash", G3_WATER, G3_GROUND}},
+    {0x145, {"Luvdisc", G3_WATER, G3_WATER}},
+    {0x146, {"Corphish", G3_WATER, G3_WATER}},
+    {0x147, {"Crawdaunt", G3_WATER, G3_DARK}},
+    {0x148, {"Feebas", G3_WATER, G3_WATER}},
+    {0x149, {"Milotic", G3_WATER, G3_WATER}},
+    {0x14A, {"Carvanha", G3_WATER, G3_DARK}},
+    {0x14B, {"Sharpedo", G3_WATER, G3_DARK}},
+    {0x14C, {"Trapinch", G3_GROUND, G3_GROUND}},
+    {0x14D, {"Vibrava", G3_GROUND, G3_DRAGON}},
+    {0x14E, {"Flygon", G3_GROUND, G3_DRAGON}},
+    {0x14F, {"Makuhita", G3_FIGHTING, G3_FIGHTING}},
+    {0x150, {"Hariyama", G3_FIGHTING, G3_FIGHTING}},
+    {0x151, {"Electrike", G3_ELECTRIC, G3_ELECTRIC}},
+    {0x152, {"Manectric", G3_ELECTRIC, G3_ELECTRIC}},
+    {0x153, {"Numel", G3_FIRE, G3_GROUND}},
+    {0x154, {"Camerupt", G3_FIRE, G3_GROUND}},
+    {0x155, {"Spheal", G3_ICE, G3_WATER}},
+    {0x156, {"Sealeo", G3_ICE, G3_WATER}},
+    {0x157, {"Walrein", G3_ICE, G3_WATER}},
+    {0x158, {"Cacnea", G3_GRASS, G3_GRASS}},
+    {0x159, {"Cacturne", G3_GRASS, G3_DARK}},
+    {0x15A, {"Snorunt", G3_ICE, G3_ICE}},
+    {0x15B, {"Glalie", G3_ICE, G3_ICE}},
+    {0x15C, {"Lunatone", G3_ROCK, G3_PSYCHIC}},
+    {0x15D, {"Solrock", G3_ROCK, G3_PSYCHIC}},
+    {0x15E, {"Azurill", G3_NORMAL, G3_NORMAL}},
+    {0x15F, {"Spoink", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x160, {"Grumpig", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x161, {"Plusle", G3_ELECTRIC, G3_ELECTRIC}},
+    {0x162, {"Minun", G3_ELECTRIC, G3_ELECTRIC}},
+    {0x163, {"Mawile", G3_STEEL, G3_STEEL}},
+    {0x164, {"Meditite", G3_FIGHTING, G3_PSYCHIC}},
+    {0x165, {"Medicham", G3_FIGHTING, G3_PSYCHIC}},
+    {0x166, {"Swablu", G3_NORMAL, G3_FLYING}},
+    {0x167, {"Altaria", G3_DRAGON, G3_FLYING}},
+    {0x168, {"Wynaut", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x169, {"Duskull", G3_GHOST, G3_GHOST}},
+    {0x16A, {"Dusclops", G3_GHOST, G3_GHOST}},
+    {0x16B, {"Roselia", G3_GRASS, G3_POISON}},
+    {0x16C, {"Slakoth", G3_NORMAL, G3_NORMAL}},
+    {0x16D, {"Vigoroth", G3_NORMAL, G3_NORMAL}},
+    {0x16E, {"Slaking", G3_NORMAL, G3_NORMAL}},
+    {0x16F, {"Gulpin", G3_POISON, G3_POISON}},
+    {0x170, {"Swalot", G3_POISON, G3_POISON}},
+    {0x171, {"Tropius", G3_GRASS, G3_FLYING}},
+    {0x172, {"Whismur", G3_NORMAL, G3_NORMAL}},
+    {0x173, {"Loudred", G3_NORMAL, G3_NORMAL}},
+    {0x174, {"Exploud", G3_NORMAL, G3_NORMAL}},
+    {0x175, {"Clamperl", G3_WATER, G3_WATER}},
+    {0x176, {"Huntail", G3_WATER, G3_WATER}},
+    {0x177, {"Gorebyss", G3_WATER, G3_WATER}},
+    {0x178, {"Absol", G3_DARK, G3_DARK}},
+    {0x179, {"Shuppet", G3_GHOST, G3_GHOST}},
+    {0x17A, {"Banette", G3_GHOST, G3_GHOST}},
+    {0x17B, {"Seviper", G3_POISON, G3_POISON}},
+    {0x17C, {"Zangoose", G3_NORMAL, G3_NORMAL}},
+    {0x17D, {"Relicanth", G3_ROCK, G3_WATER}},
+    {0x17E, {"Aron", G3_STEEL, G3_ROCK}},
+    {0x17F, {"Lairon", G3_STEEL, G3_ROCK}},
+    {0x180, {"Aggron", G3_STEEL, G3_ROCK}},
+    {0x181, {"Castform", G3_NORMAL, G3_NORMAL}},
+    {0x182, {"Volbeat", G3_BUG, G3_BUG}},
+    {0x183, {"Illumise", G3_BUG, G3_BUG}},
+    {0x184, {"Lileep", G3_ROCK, G3_GRASS}},
+    {0x185, {"Cradily", G3_ROCK, G3_GRASS}},
+    {0x186, {"Anorith", G3_ROCK, G3_BUG}},
+    {0x187, {"Armaldo", G3_ROCK, G3_BUG}},
+    {0x188, {"Ralts", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x189, {"Kirlia", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x18A, {"Gardevoir", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x18B, {"Bagon", G3_DRAGON, G3_DRAGON}},
+    {0x18C, {"Shelgon", G3_DRAGON, G3_DRAGON}},
+    {0x18D, {"Salamence", G3_DRAGON, G3_FLYING}},
+    {0x18E, {"Beldum", G3_STEEL, G3_PSYCHIC}},
+    {0x18F, {"Metang", G3_STEEL, G3_PSYCHIC}},
+    {0x190, {"Metagross", G3_STEEL, G3_PSYCHIC}},
+    {0x191, {"Regirock", G3_ROCK, G3_ROCK}},
+    {0x192, {"Regice", G3_ICE, G3_ICE}},
+    {0x193, {"Registeel", G3_STEEL, G3_STEEL}},
+    {0x194, {"Kyogre", G3_WATER, G3_WATER}},
+    {0x195, {"Groudon", G3_GROUND, G3_GROUND}},
+    {0x196, {"Rayquaza", G3_DRAGON, G3_FLYING}},
+    {0x197, {"Latias", G3_DRAGON, G3_PSYCHIC}},
+    {0x198, {"Latios", G3_DRAGON, G3_PSYCHIC}},
+    {0x199, {"Jirachi", G3_STEEL, G3_PSYCHIC}},
+    {0x19A, {"Deoxys", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x19B, {"Chimecho", G3_PSYCHIC, G3_PSYCHIC}},
+
+    // Pokémon Egg (???)
+    {0x19C, {"Pokémon Egg", G3_MYSTERY, G3_MYSTERY}},
+
+    // Unown variants (B.. ? etc) — all Psychic in your table
+    {0x19D, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x19E, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x19F, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A0, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A1, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A2, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A3, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A4, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A5, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A6, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A7, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A8, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1A9, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AA, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AB, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AC, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AD, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AE, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1AF, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B0, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B1, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B2, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B3, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B4, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B5, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B6, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+    {0x1B7, {"Unown", G3_PSYCHIC, G3_PSYCHIC}},
+};
+
+// ============================================================================
 // Utility functions
 // ============================================================================
 
-// Get Pokémon info by index and generation (returns nullptr if not found)
-inline const PokemonInfo* getPokemonInfo(uint8_t index, int generation) {
-    const std::unordered_map<uint8_t, PokemonInfo>* pokemonMap = nullptr;
-    
+// Map Gen 1/2 type ids to Gen 3 type ids (0..17)
+inline uint8_t mapGen12TypeToGen3(uint8_t t) {
+    switch (t) {
+        case TYPE_NORMAL:   return G3_NORMAL;
+        case TYPE_FIGHTING: return G3_FIGHTING;
+        case TYPE_FLYING:   return G3_FLYING;
+        case TYPE_POISON:   return G3_POISON;
+        case TYPE_GROUND:   return G3_GROUND;
+        case TYPE_ROCK:     return G3_ROCK;
+        case TYPE_BUG:      return G3_BUG;
+        case TYPE_GHOST:    return G3_GHOST;
+        case TYPE_STEEL:    return G3_STEEL;
+        case TYPE_FIRE:     return G3_FIRE;
+        case TYPE_WATER:    return G3_WATER;
+        case TYPE_GRASS:    return G3_GRASS;
+        case TYPE_ELECTRIC: return G3_ELECTRIC;
+        case TYPE_PSYCHIC:  return G3_PSYCHIC;
+        case TYPE_ICE:      return G3_ICE;
+        case TYPE_DRAGON:   return G3_DRAGON;
+        case TYPE_DARK:     return G3_DARK;
+        case TYPE_CURSE:    return G3_MYSTERY;
+        default:            return G3_UNKNOWN; // includes TYPE_BIRD / TYPE_UNKNOWN etc.
+    }
+}
+
+// Wide-index version (supports Gen 3 indices > 0xFF)
+inline const PokemonInfo* getPokemonInfo(uint16_t index, int generation) {
     switch (generation) {
-        case 1:
-            pokemonMap = &GEN1_POKEMON;
-            break;
-        case 2:
-            pokemonMap = &GEN2_POKEMON;
-            break;
+        case 1: {
+            if (index > 0xFF) return nullptr;
+            auto it = GEN1_POKEMON.find(static_cast<uint8_t>(index));
+            return (it != GEN1_POKEMON.end()) ? &it->second : nullptr;
+        }
+        case 2: {
+            if (index > 0xFF) return nullptr;
+            auto it = GEN2_POKEMON.find(static_cast<uint8_t>(index));
+            return (it != GEN2_POKEMON.end()) ? &it->second : nullptr;
+        }
+        case 3: {
+            // First check Gen3 explicit table (overrides + all >0xFB entries)
+            auto it3 = GEN3_POKEMON.find(index);
+            if (it3 != GEN3_POKEMON.end()) return &it3->second;
+
+            // For 0x001..0x0FB, Gen3 names match Gen2, but types must be remapped.
+            if (index >= 0x001 && index <= 0x0FB) {
+                auto it2 = GEN2_POKEMON.find(static_cast<uint8_t>(index));
+                if (it2 == GEN2_POKEMON.end()) return nullptr;
+
+                static thread_local PokemonInfo converted;
+                converted.name  = it2->second.name;
+                converted.type1 = mapGen12TypeToGen3(it2->second.type1);
+                converted.type2 = mapGen12TypeToGen3(it2->second.type2);
+                return &converted;
+            }
+
+            return nullptr;
+        }
         default:
             return nullptr;
     }
-    
-    auto it = pokemonMap->find(index);
-    if (it != pokemonMap->end()) {
-        return &it->second;
-    }
-    return nullptr;
 }
 
-// Get Pokémon name by index and generation (returns nullptr if not found)
-inline const char* getPokemonName(uint8_t index, int generation) {
+// Backward-compatible original signature
+inline const PokemonInfo* getPokemonInfo(uint8_t index, int generation) {
+    return getPokemonInfo(static_cast<uint16_t>(index), generation);
+}
+
+// Name helpers
+inline const char* getPokemonName(uint16_t index, int generation) {
     const PokemonInfo* info = getPokemonInfo(index, generation);
     return info ? info->name : nullptr;
 }
 
-// Get primary type for Pokémon by index and generation (returns TYPE_UNKNOWN if not found)
-inline uint8_t getPokemonType1(uint8_t index, int generation) {
+inline const char* getPokemonName(uint8_t index, int generation) {
+    return getPokemonName(static_cast<uint16_t>(index), generation);
+}
+
+// Type helpers
+inline uint8_t getPokemonType1(uint16_t index, int generation) {
     const PokemonInfo* info = getPokemonInfo(index, generation);
     return info ? info->type1 : TYPE_UNKNOWN;
 }
+inline uint8_t getPokemonType1(uint8_t index, int generation) {
+    return getPokemonType1(static_cast<uint16_t>(index), generation);
+}
 
-// Get secondary type for Pokémon by index and generation (returns TYPE_UNKNOWN if not found)
-inline uint8_t getPokemonType2(uint8_t index, int generation) {
+inline uint8_t getPokemonType2(uint16_t index, int generation) {
     const PokemonInfo* info = getPokemonInfo(index, generation);
     return info ? info->type2 : TYPE_UNKNOWN;
 }
+inline uint8_t getPokemonType2(uint8_t index, int generation) {
+    return getPokemonType2(static_cast<uint16_t>(index), generation);
+}
 
-// Get both types as a combined value (type1 in upper byte, type2 in lower byte, or 0xFFFF if not found)
-inline uint16_t getPokemonTypes(uint8_t index, int generation) {
+// Combined types (type1 in upper byte, type2 in lower byte, or 0xFFFF if not found)
+inline uint16_t getPokemonTypes(uint16_t index, int generation) {
     uint8_t type1 = getPokemonType1(index, generation);
     uint8_t type2 = getPokemonType2(index, generation);
-    
-    if (type1 == TYPE_UNKNOWN && type2 == TYPE_UNKNOWN) {
-        return 0xFFFF;
-    }
+
+    if (type1 == TYPE_UNKNOWN && type2 == TYPE_UNKNOWN) return 0xFFFF;
     return (static_cast<uint16_t>(type1) << 8) | type2;
 }
-
-// ============================================================================
-// Legacy Gen 1-specific functions (for backward compatibility)
-// ============================================================================
-
-inline const PokemonInfo* getGen1PokemonInfo(uint8_t index) {
-    return getPokemonInfo(index, 1);
-}
-
-inline const char* getGen1PokemonName(uint8_t index) {
-    return getPokemonName(index, 1);
-}
-
-inline uint8_t getGen1PokemonType1(uint8_t index) {
-    return getPokemonType1(index, 1);
-}
-
-inline uint8_t getGen1PokemonType2(uint8_t index) {
-    return getPokemonType2(index, 1);
+inline uint16_t getPokemonTypes(uint8_t index, int generation) {
+    return getPokemonTypes(static_cast<uint16_t>(index), generation);
 }
 
 // ============================================================================
-// Legacy Gen 2-specific functions (for backward compatibility)
+// Legacy Gen 1-specific functions (backward compatibility)
 // ============================================================================
 
-inline const PokemonInfo* getGen2PokemonInfo(uint8_t index) {
-    return getPokemonInfo(index, 2);
-}
+inline const PokemonInfo* getGen1PokemonInfo(uint8_t index) { return getPokemonInfo(index, 1); }
+inline const char* getGen1PokemonName(uint8_t index) { return getPokemonName(index, 1); }
+inline uint8_t getGen1PokemonType1(uint8_t index) { return getPokemonType1(index, 1); }
+inline uint8_t getGen1PokemonType2(uint8_t index) { return getPokemonType2(index, 1); }
 
-inline const char* getGen2PokemonName(uint8_t index) {
-    return getPokemonName(index, 2);
-}
+// ============================================================================
+// Legacy Gen 2-specific functions (backward compatibility)
+// ============================================================================
 
-inline uint8_t getGen2PokemonType1(uint8_t index) {
-    return getPokemonType1(index, 2);
-}
+inline const PokemonInfo* getGen2PokemonInfo(uint8_t index) { return getPokemonInfo(index, 2); }
+inline const char* getGen2PokemonName(uint8_t index) { return getPokemonName(index, 2); }
+inline uint8_t getGen2PokemonType1(uint8_t index) { return getPokemonType1(index, 2); }
+inline uint8_t getGen2PokemonType2(uint8_t index) { return getPokemonType2(index, 2); }
 
-inline uint8_t getGen2PokemonType2(uint8_t index) {
-    return getPokemonType2(index, 2);
+// ============================================================================
+// Gen 3-specific functions
+// ============================================================================
+
+inline const PokemonInfo* getGen3PokemonInfo(uint16_t index) { return getPokemonInfo(index, 3); }
+inline const char* getGen3PokemonName(uint16_t index) { return getPokemonName(index, 3); }
+inline uint8_t getGen3PokemonType1(uint16_t index) { return getPokemonType1(index, 3); }
+inline uint8_t getGen3PokemonType2(uint16_t index) { return getPokemonType2(index, 3); }
+inline uint16_t getGen3PokemonTypes(uint16_t index) { return getPokemonTypes(index, 3); }
+
+inline bool isGen3UnownVariant(uint16_t index) {
+    return index >= 0x19D && index <= 0x1B7;
 }
 
 } // namespace PokemonIndex

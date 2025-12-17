@@ -12,18 +12,24 @@ static void printUsage(const char* progName) {
     std::cerr << "  <game>       Game name:" << std::endl;
     std::cerr << "                 Gen 1: red, blue, yellow, green" << std::endl;
     std::cerr << "                 Gen 2: gold, silver, crystal" << std::endl;
+    std::cerr << "                 Gen 3: ruby, sapphire, emerald, firered, leafgreen" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Options:" << std::endl;
-    std::cerr << "  -j          Use Japanese offsets" << std::endl;
+    std::cerr << "  -j          Use Japanese offsets (Gen 1/2 only)" << std::endl;
     std::cerr << "  -o          Overwrite the original file instead of writing to edited_files/" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Interactive controls:" << std::endl;
     std::cerr << "  Up/Down        Select a field" << std::endl;
     std::cerr << "  Left/Right     Switch between Pokemon" << std::endl;
     std::cerr << "  Enter          Edit the selected field" << std::endl;
-    std::cerr << "  I              Type a name for Species/Moves" << std::endl;
+    std::cerr << "  I              Type a name for Species/Moves/Items" << std::endl;
     std::cerr << "  Ctrl/Cmd+S     Save" << std::endl;
     std::cerr << "  Q/Esc          Quit" << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Gen 3 Notes:" << std::endl;
+    std::cerr << "  - PID (Personality Value) cannot be edited as it affects encryption" << std::endl;
+    std::cerr << "  - Data Order shows the substructure arrangement based on PID" << std::endl;
+    std::cerr << "  - Pokemon checksums are automatically recalculated on save" << std::endl;
 }
 
 int main(int argc, char** argv) {

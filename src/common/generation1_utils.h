@@ -31,6 +31,14 @@ struct BankChecksumData {
     bool subMatches[6]{false};
 };
 
+struct ChecksumConfig {
+    size_t start;
+    size_t end;
+    size_t checksumLocation;
+};
+
+ChecksumConfig getRedBlueYellowConfig(bool isJapanese);
+
 // Calculate all checksums for a Gen 1 box bank (Banks 2 and 3)
 // baseAddr should be 0x4000 for Bank 2 or 0x6000 for Bank 3
 void calculateBankChecksums(const std::string& buffer, size_t baseAddr, BankChecksumData& bankData);

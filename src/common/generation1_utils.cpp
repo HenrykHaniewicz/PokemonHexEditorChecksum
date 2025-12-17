@@ -85,4 +85,14 @@ void calculateBankChecksums(const std::string& buffer, size_t baseAddr, BankChec
     }
 }
 
+ChecksumConfig getRedBlueYellowConfig(bool isJapanese) {
+    ChecksumConfig config;
+    
+    config.start = 0x2598;
+    config.end = isJapanese ? 0x3593 : 0x3522;
+    config.checksumLocation = isJapanese ? 0x3594 : 0x3523;
+    
+    return config;
+}
+
 } // namespace Generation1Utils

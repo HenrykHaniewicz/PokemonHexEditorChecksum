@@ -71,7 +71,7 @@ Edit the bag in a save file:
 pokemon_bag <file> <game>
 ```
 
-### Party Editor (only Gen 1 and 2 for now)
+### Party Editor
 
 Edit the party in a save file:
 
