@@ -15,7 +15,7 @@ static void printUsage(const char* progName) {
     std::cerr << "                 Gen 3: ruby, sapphire, emerald, firered, leafgreen" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Options:" << std::endl;
-    std::cerr << "  -j          Use Japanese offsets (Gen 1/2 only)" << std::endl;
+    std::cerr << "  -j          Use Japanese offsets (Gen 1/2 only as Gen 3 is the same in all regions)" << std::endl;
     std::cerr << "  -o          Overwrite the original file instead of writing to edited_files/" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Interactive controls:" << std::endl;
@@ -28,7 +28,8 @@ static void printUsage(const char* progName) {
     std::cerr << std::endl;
     std::cerr << "Gen 3 Notes:" << std::endl;
     std::cerr << "  - PID (Personality Value) cannot be edited as it affects encryption" << std::endl;
-    std::cerr << "  - Data Order shows the substructure arrangement based on PID" << std::endl;
+    std::cerr << "  - Data Order shows the Pokemon substructure arrangement based on PID" << std::endl;
+    std::cerr << "  - Modifying Pokemon on RS will result in auto-unlocking the National Dex. FRLG and E will not auto-unlock the National Dex" << std::endl;
     std::cerr << "  - Pokemon checksums are automatically recalculated on save" << std::endl;
 }
 

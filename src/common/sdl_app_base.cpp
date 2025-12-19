@@ -1,6 +1,7 @@
 #include "sdl_app_base.h"
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 // ============================================================================
 // Constructor / Destructor
@@ -40,10 +41,13 @@ bool SDLAppBase::init() {
     
     if (!TTF_Init()) {
         std::cerr << "TTF init failed: " << SDL_GetError() << std::endl;
+        SDL_Quit();
         return false;
     }
     
     if (!loadFonts()) {
+        TTF_Quit();
+        SDL_Quit();
         return false;
     }
 
@@ -51,12 +55,14 @@ bool SDLAppBase::init() {
                               SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "Window creation failed: " << SDL_GetError() << std::endl;
+        cleanup();
         return false;
     }
 
     renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) {
         std::cerr << "Renderer creation failed: " << SDL_GetError() << std::endl;
+        cleanup();
         return false;
     }
 
@@ -114,8 +120,12 @@ void SDLAppBase::run() {
 }
 
 void SDLAppBase::cleanup() {
-    SDL_StopTextInput(window);
+    // Stop text input only if window exists
+    if (window) {
+        SDL_StopTextInput(window);
+    }
     
+    // Close fonts in reverse order of dependencies
     if (japaneseFont) {
         TTF_CloseFont(japaneseFont);
         japaneseFont = nullptr;
@@ -124,10 +134,11 @@ void SDLAppBase::cleanup() {
         TTF_CloseFont(largeFont);
         largeFont = nullptr;
     }
+    // Only close font once, since regularFont points to the same memory
     if (font) {
         TTF_CloseFont(font);
         font = nullptr;
-        regularFont = nullptr;
+        regularFont = nullptr;  // Just null it out, don't double-free
     }
     if (renderer) {
         SDL_DestroyRenderer(renderer);
@@ -182,9 +193,12 @@ bool SDLAppBase::loadFonts(int normalSize, int largeSize) {
         font = TTF_OpenFont(fontPaths[i], normalSize);
         if (font) {
             currentFontPath = fontPaths[i];
-            regularFont = font;
+            regularFont = font;  // Point to same font
+            
+            // Only load large font if requested and if normal font succeeded
             if (largeSize > 0) {
                 largeFont = TTF_OpenFont(fontPaths[i], largeSize);
+                // It's okay if largeFont fails, we can continue with just the regular font
             }
             break;
         }
@@ -195,7 +209,18 @@ bool SDLAppBase::loadFonts(int normalSize, int largeSize) {
         return false;
     }
     
-    TTF_GetStringSize(font, "W", 0, &charWidth, &charHeight);
+    // Get character metrics - check for success
+    if (!TTF_GetStringSize(font, "W", 0, &charWidth, &charHeight)) {
+        std::cerr << "Failed to get font metrics: " << SDL_GetError() << std::endl;
+        TTF_CloseFont(font);
+        if (largeFont) {
+            TTF_CloseFont(largeFont);
+            largeFont = nullptr;
+        }
+        font = nullptr;
+        regularFont = nullptr;
+        return false;
+    }
     
     // Also load Japanese font (not critical if it fails)
     loadJapaneseFont(normalSize);
@@ -225,8 +250,16 @@ bool SDLAppBase::loadJapaneseFont(int size) {
     if (japaneseFont) {
         // Measure a typical Japanese character to get the width
         int w, h;
-        TTF_GetStringSize(japaneseFont, "あ", 0, &w, &h);
-        japaneseCharWidth = w;
+        if (TTF_GetStringSize(japaneseFont, "あ", 0, &w, &h)) {
+            japaneseCharWidth = w;
+        } else {
+            // If we can't get metrics, close the font and treat as unavailable
+            TTF_CloseFont(japaneseFont);
+            japaneseFont = nullptr;
+            japaneseCharWidth = 0;
+            currentJapaneseFontPath.clear();
+            return false;
+        }
     }
     
     return japaneseFont != nullptr;
@@ -255,8 +288,8 @@ size_t SDLAppBase::getUTF8CharLength(unsigned char firstByte) {
 }
 
 bool SDLAppBase::isCombiningDakuten(const std::string& text, size_t pos) {
-    // Check if we have enough bytes for a 3-byte UTF-8 character
-    if (pos + 2 >= text.length()) return false;
+    // Check bounds
+    if (pos >= text.length() || pos + 2 >= text.length()) return false;
     
     unsigned char b1 = static_cast<unsigned char>(text[pos]);
     unsigned char b2 = static_cast<unsigned char>(text[pos + 1]);
@@ -279,6 +312,14 @@ UTF8CharInfo SDLAppBase::analyzeUTF8Char(const std::string& text, size_t pos) co
     
     unsigned char firstByte = static_cast<unsigned char>(text[pos]);
     info.byteLength = getUTF8CharLength(firstByte);
+    
+    // Bounds check: ensure we don't read past end of string
+    if (pos + info.byteLength > text.length()) {
+        info.byteLength = text.length() - pos;
+        info.totalLength = info.byteLength;
+        return info;
+    }
+    
     info.isMultiByte = (info.byteLength > 1);
     info.totalLength = info.byteLength;
     
@@ -303,7 +344,10 @@ UTF8CharInfo SDLAppBase::analyzeUTF8Char(const std::string& text, size_t pos) co
         size_t nextPos = pos + info.byteLength;
         if (nextPos < text.length() && isCombiningDakuten(text, nextPos)) {
             info.hasFollowingCombiningMark = true;
-            info.totalLength += 3;  // Combining marks are 3 bytes
+            // Bounds check for combining mark
+            if (nextPos + 3 <= text.length()) {
+                info.totalLength += 3;  // Combining marks are 3 bytes
+            }
         }
     }
     
@@ -318,7 +362,9 @@ void SDLAppBase::renderText(const std::string& text, int x, int y, SDL_Color col
                            TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!f) f = font;
+    if (!f) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), text.size(), color);
     if (!surface) return;
@@ -345,7 +391,9 @@ void SDLAppBase::renderTextScaled(const std::string& text, int x, int y, SDL_Col
                                   float scale, TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!f) f = font;
+    if (!f) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     SDL_Surface* surface = TTF_RenderText_Blended(f, text.c_str(), text.size(), color);
     if (!surface) return;
@@ -371,22 +419,32 @@ void SDLAppBase::renderTextScaled(const std::string& text, int x, int y, SDL_Col
 void SDLAppBase::renderCenteredText(const std::string& text, int y, SDL_Color color, 
                                    TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (!f) f = font;
+    if (!f) return;  // Safety check
     int w, h;
-    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
+    if (!TTF_GetStringSize(f, text.c_str(), 0, &w, &h)) return;  // Check for error
     renderText(text, (windowWidth - w) / 2, y, color, f, targetRenderer);
 }
 
 void SDLAppBase::renderCenteredTextAt(const std::string& text, int x, int y, SDL_Color color,
                                      TTF_Font* f, SDL_Renderer* targetRenderer) {
     if (!f) f = font;
+    if (!f) return;  // Safety check
     int w, h;
-    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
+    if (!TTF_GetStringSize(f, text.c_str(), 0, &w, &h)) return;  // Check for error
     renderText(text, x - w / 2, y - h / 2, color, f, targetRenderer);
 }
 
 void SDLAppBase::getTextSize(const std::string& text, int& w, int& h, TTF_Font* f) {
     if (!f) f = font;
-    TTF_GetStringSize(f, text.c_str(), 0, &w, &h);
+    if (!f) {
+        w = 0;
+        h = 0;
+        return;
+    }
+    if (!TTF_GetStringSize(f, text.c_str(), 0, &w, &h)) {
+        w = 0;
+        h = 0;
+    }
 }
 
 // ============================================================================
@@ -397,7 +455,9 @@ void SDLAppBase::renderMixedText(const std::string& text, int x, int y, SDL_Colo
                                  TTF_Font* latinFont, SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!latinFont) latinFont = font;
+    if (!latinFont) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     // If no Japanese font, fall back to regular rendering
     if (!japaneseFont) {
@@ -410,6 +470,10 @@ void SDLAppBase::renderMixedText(const std::string& text, int x, int y, SDL_Colo
     
     while (i < text.length()) {
         UTF8CharInfo charInfo = analyzeUTF8Char(text, i);
+        
+        // Bounds check
+        if (i + charInfo.byteLength > text.length()) break;
+        
         std::string ch = text.substr(i, charInfo.byteLength);
         
         TTF_Font* fontToUse = charInfo.isMultiByte ? japaneseFont : latinFont;
@@ -440,7 +504,9 @@ void SDLAppBase::renderMixedTextScaled(const std::string& text, int x, int y, SD
                                        SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!latinFont) latinFont = font;
+    if (!latinFont) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     // If no Japanese font or scale is 1.0, fall back to regular mixed text rendering
     if (!japaneseFont || std::abs(scale - 1.0f) < 0.001f) {
@@ -467,6 +533,10 @@ void SDLAppBase::renderMixedTextScaled(const std::string& text, int x, int y, SD
     
     while (i < text.length()) {
         UTF8CharInfo charInfo = analyzeUTF8Char(text, i);
+        
+        // Bounds check
+        if (i + charInfo.byteLength > text.length()) break;
+        
         std::string ch = text.substr(i, charInfo.byteLength);
         
         TTF_Font* fontToUse = charInfo.isMultiByte ? scaledJapaneseFont : scaledLatinFont;
@@ -500,7 +570,9 @@ void SDLAppBase::renderMixedTextScaledViaTexture(const std::string& text, int x,
                                                   TTF_Font* latinFont, 
                                                   SDL_Renderer* targetRenderer) {
     if (!latinFont) latinFont = font;
+    if (!latinFont) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     // Calculate total size needed
     int totalWidth = 0;
@@ -509,16 +581,23 @@ void SDLAppBase::renderMixedTextScaledViaTexture(const std::string& text, int x,
     size_t i = 0;
     while (i < text.length()) {
         UTF8CharInfo charInfo = analyzeUTF8Char(text, i);
+        
+        // Bounds check
+        if (i + charInfo.byteLength > text.length()) break;
+        
         std::string ch = text.substr(i, charInfo.byteLength);
         TTF_Font* fontToUse = (charInfo.isMultiByte && japaneseFont) ? japaneseFont : latinFont;
         
         int w, h;
-        TTF_GetStringSize(fontToUse, ch.c_str(), ch.size(), &w, &h);
-        totalWidth += w;
-        maxHeight = std::max(maxHeight, h);
+        if (TTF_GetStringSize(fontToUse, ch.c_str(), ch.size(), &w, &h)) {
+            totalWidth += w;
+            maxHeight = std::max(maxHeight, h);
+        }
         
         i += charInfo.byteLength;
     }
+    
+    if (totalWidth == 0 || maxHeight == 0) return;
     
     // Create a texture to render the text at normal size
     SDL_Texture* textTexture = SDL_CreateTexture(targetRenderer, 
@@ -531,7 +610,12 @@ void SDLAppBase::renderMixedTextScaledViaTexture(const std::string& text, int x,
     }
     
     SDL_Texture* oldTarget = SDL_GetRenderTarget(targetRenderer);
-    SDL_SetRenderTarget(targetRenderer, textTexture);
+    if (!SDL_SetRenderTarget(targetRenderer, textTexture)) {
+        SDL_DestroyTexture(textTexture);
+        renderMixedText(text, x, y, color, latinFont, targetRenderer);
+        return;
+    }
+    
     SDL_SetTextureBlendMode(textTexture, SDL_BLENDMODE_BLEND);
     
     SDL_SetRenderDrawColor(targetRenderer, 0, 0, 0, 0);
@@ -543,6 +627,10 @@ void SDLAppBase::renderMixedTextScaledViaTexture(const std::string& text, int x,
     
     while (i < text.length()) {
         UTF8CharInfo charInfo = analyzeUTF8Char(text, i);
+        
+        // Bounds check
+        if (i + charInfo.byteLength > text.length()) break;
+        
         std::string ch = text.substr(i, charInfo.byteLength);
         TTF_Font* fontToUse = (charInfo.isMultiByte && japaneseFont) ? japaneseFont : latinFont;
         
@@ -589,7 +677,9 @@ void SDLAppBase::renderMixedTextWithCellWidth(const std::string& text, int x, in
                                                SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!latinFont) latinFont = font;
+    if (!latinFont) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     int currentX = x;
     size_t i = 0;
@@ -602,13 +692,25 @@ void SDLAppBase::renderMixedTextWithCellWidth(const std::string& text, int x, in
             currentX -= cellWidth;
         }
         
+        // Bounds check
+        if (i + charInfo.totalLength > text.length()) {
+            charInfo.totalLength = text.length() - i;
+        }
+        
         // Get the string to render (include following combining mark if present)
         std::string charToRender = text.substr(i, charInfo.totalLength);
         
         TTF_Font* fontToUse = (charInfo.isMultiByte && japaneseFont) ? japaneseFont : latinFont;
         
         int charW, charH;
-        TTF_GetStringSize(fontToUse, charToRender.c_str(), charToRender.size(), &charW, &charH);
+        if (!TTF_GetStringSize(fontToUse, charToRender.c_str(), charToRender.size(), &charW, &charH)) {
+            // Skip this character on error
+            i += charInfo.totalLength;
+            if (!charInfo.isCombiningMark) {
+                currentX += cellWidth;
+            }
+            continue;
+        }
         
         // Center the character in the cell
         int offsetX = std::max(0, (cellWidth - charW) / 2);
@@ -646,7 +748,9 @@ void SDLAppBase::renderMixedTextScaledWithCellWidth(const std::string& text, int
                                                      SDL_Renderer* targetRenderer) {
     if (text.empty()) return;
     if (!latinFont) latinFont = font;
+    if (!latinFont) return;  // Safety check
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     // For scale ~1.0, use non-scaled version
     if (std::abs(scale - 1.0f) < 0.001f) {
@@ -679,13 +783,25 @@ void SDLAppBase::renderMixedTextScaledWithCellWidth(const std::string& text, int
             currentX -= scaledCellWidth;
         }
         
+        // Bounds check
+        if (i + charInfo.totalLength > text.length()) {
+            charInfo.totalLength = text.length() - i;
+        }
+        
         std::string charToRender = text.substr(i, charInfo.totalLength);
         
         TTF_Font* fontToUse = (charInfo.isMultiByte && scaledJapaneseFont) 
                              ? scaledJapaneseFont : scaledLatinFont;
         
         int charW, charH;
-        TTF_GetStringSize(fontToUse, charToRender.c_str(), charToRender.size(), &charW, &charH);
+        if (!TTF_GetStringSize(fontToUse, charToRender.c_str(), charToRender.size(), &charW, &charH)) {
+            // Skip this character on error
+            i += charInfo.totalLength;
+            if (!charInfo.isCombiningMark) {
+                currentX += scaledCellWidth;
+            }
+            continue;
+        }
         
         int offsetX = std::max(0, (scaledCellWidth - charW) / 2);
         
@@ -724,6 +840,8 @@ void SDLAppBase::renderMixedTextScaledWithCellWidth(const std::string& text, int
 void SDLAppBase::renderFilledRect(const SDL_Rect& rect, SDL_Color color, 
                                  SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
+    
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
 
     SDL_FRect r{
@@ -738,6 +856,8 @@ void SDLAppBase::renderFilledRect(const SDL_Rect& rect, SDL_Color color,
 void SDLAppBase::renderOutlineRect(const SDL_Rect& rect, SDL_Color color,
                                   SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
+    
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
 
     SDL_FRect r{
@@ -752,6 +872,8 @@ void SDLAppBase::renderOutlineRect(const SDL_Rect& rect, SDL_Color color,
 void SDLAppBase::renderLine(int x1, int y1, int x2, int y2, SDL_Color color,
                            SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
+    
     SDL_SetRenderDrawColor(targetRenderer, color.r, color.g, color.b, color.a);
     SDL_RenderLine(targetRenderer,
                    static_cast<float>(x1),
@@ -763,6 +885,7 @@ void SDLAppBase::renderLine(int x1, int y1, int x2, int y2, SDL_Color color,
 void SDLAppBase::renderButton(const SDL_Rect& rect, const std::string& text, bool hovered,
                               SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     SDL_Color btnColor = hovered ? colors.buttonHover : colors.buttonBg;
     renderFilledRect(rect, btnColor, targetRenderer);
@@ -794,8 +917,10 @@ void SDLAppBase::getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight,
         float thumbRatio = static_cast<float>(scrollbar.visibleItems) / 
                           static_cast<float>(scrollbar.totalItems);
         thumbHeight = std::max(30, static_cast<int>(sbHeight * thumbRatio));
-        float scrollRatio = static_cast<float>(scrollbar.offset) / 
-                           static_cast<float>(scrollbar.maxOffset());
+        
+        size_t maxOff = scrollbar.maxOffset();
+        float scrollRatio = (maxOff > 0) ? (static_cast<float>(scrollbar.offset) / 
+                           static_cast<float>(maxOff)) : 0.0f;
         thumbY = sbY + static_cast<int>((sbHeight - thumbHeight) * scrollRatio);
     } else {
         thumbHeight = sbHeight;
@@ -805,6 +930,7 @@ void SDLAppBase::getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight,
 
 void SDLAppBase::renderScrollbar(SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
+    if (!targetRenderer) return;  // Safety check
     
     int sbX, sbY, sbHeight, thumbY, thumbHeight;
     getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
@@ -831,8 +957,9 @@ bool SDLAppBase::handleScrollbarClick(int x, int y) {
     if (y >= thumbY && y < thumbY + thumbHeight) {
         scrollbar.dragging = true;
         scrollbar.dragStartY = y;
-        scrollbar.dragStartRatio = static_cast<float>(scrollbar.offset) / 
-                                   static_cast<float>(scrollbar.maxOffset());
+        size_t maxOff = scrollbar.maxOffset();
+        scrollbar.dragStartRatio = (maxOff > 0) ? (static_cast<float>(scrollbar.offset) / 
+                                   static_cast<float>(maxOff)) : 0.0f;
     } else {
         float clickRatio = static_cast<float>(y - sbY) / static_cast<float>(sbHeight);
         scrollToRatio(clickRatio);
@@ -848,8 +975,11 @@ void SDLAppBase::handleScrollbarDrag(int y) {
     int sbX, sbY, sbHeight, thumbY, thumbHeight;
     getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
     
+    int effectiveHeight = sbHeight - thumbHeight;
+    if (effectiveHeight <= 0) return;  // Prevent division by zero
+    
     int deltaY = y - scrollbar.dragStartY;
-    float deltaRatio = static_cast<float>(deltaY) / static_cast<float>(sbHeight - thumbHeight);
+    float deltaRatio = static_cast<float>(deltaY) / static_cast<float>(effectiveHeight);
     float newRatio = scrollbar.dragStartRatio + deltaRatio;
     
     scrollToRatio(newRatio);
@@ -865,9 +995,22 @@ void SDLAppBase::handleScrollbarRelease() {
 void SDLAppBase::scrollBy(int64_t items) {
     if (!scrollbar.canScroll()) return;
     
-    int64_t newOffset = static_cast<int64_t>(scrollbar.offset) + items;
+    // Safe conversion with bounds checking
+    int64_t currentOffset = static_cast<int64_t>(scrollbar.offset);
+    int64_t maxOff = static_cast<int64_t>(scrollbar.maxOffset());
+    
+    // Check for overflow before adding
+    int64_t newOffset;
+    if (items > 0 && currentOffset > std::numeric_limits<int64_t>::max() - items) {
+        newOffset = maxOff;  // Saturate to max
+    } else if (items < 0 && currentOffset < std::numeric_limits<int64_t>::min() - items) {
+        newOffset = 0;  // Saturate to min
+    } else {
+        newOffset = currentOffset + items;
+    }
+    
     newOffset = std::max(static_cast<int64_t>(0), newOffset);
-    newOffset = std::min(static_cast<int64_t>(scrollbar.maxOffset()), newOffset);
+    newOffset = std::min(maxOff, newOffset);
     
     if (static_cast<size_t>(newOffset) != scrollbar.offset) {
         scrollbar.offset = static_cast<size_t>(newOffset);
@@ -907,7 +1050,9 @@ void SDLAppBase::scrollToRatio(float ratio) {
     if (!scrollbar.canScroll()) return;
     
     ratio = std::max(0.0f, std::min(1.0f, ratio));
-    size_t newOffset = static_cast<size_t>(ratio * static_cast<float>(scrollbar.maxOffset()));
+    size_t maxOff = scrollbar.maxOffset();
+    size_t newOffset = static_cast<size_t>(ratio * static_cast<float>(maxOff) + 0.5f);  // Round instead of truncate
+    newOffset = std::min(newOffset, maxOff);  // Ensure we don't exceed max
     
     if (newOffset != scrollbar.offset) {
         scrollbar.offset = newOffset;
@@ -949,6 +1094,14 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
     SDL_Renderer* dialogRenderer = SDL_CreateRenderer(dialogWindow, nullptr);
     if (!dialogRenderer) {
         std::cerr << "Failed to create dialog renderer: " << SDL_GetError() << std::endl;
+        SDL_DestroyWindow(dialogWindow);
+        return false;
+    }
+    
+    // Check if we have necessary fonts
+    if (!font || !largeFont || !regularFont) {
+        std::cerr << "Required fonts not loaded for dialog" << std::endl;
+        SDL_DestroyRenderer(dialogRenderer);
         SDL_DestroyWindow(dialogWindow);
         return false;
     }
@@ -1043,7 +1196,7 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
         renderOutlineRect(yesButton, colors.buttonYesBorder, dialogRenderer);
         
         int textW, textH;
-        getTextSize(config.yesText, textW, textH);
+        getTextSize(config.yesText, textW, textH, regularFont);
         renderText(config.yesText, 
                   yesButton.x + (yesButton.w - textW) / 2, 
                   yesButton.y + (yesButton.h - textH) / 2, 
@@ -1054,7 +1207,7 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
         renderFilledRect(noButton, noColor, dialogRenderer);
         renderOutlineRect(noButton, colors.buttonNoBorder, dialogRenderer);
         
-        getTextSize(config.noText, textW, textH);
+        getTextSize(config.noText, textW, textH, regularFont);
         renderText(config.noText, 
                   noButton.x + (noButton.w - textW) / 2, 
                   noButton.y + (noButton.h - textH) / 2, 
@@ -1067,7 +1220,9 @@ bool SDLAppBase::showConfirmDialog(const ConfirmDialogConfig& config) {
     SDL_DestroyRenderer(dialogRenderer);
     SDL_DestroyWindow(dialogWindow);
     
-    SDL_RaiseWindow(window);
+    if (window) {  // Safety check
+        SDL_RaiseWindow(window);
+    }
     needsRedraw = true;
     
     return result;

@@ -235,6 +235,8 @@ private:
     uint8_t partyCount{0};
     std::array<uint8_t, 7> partySpecies{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // +1 for terminator
     std::array<PokemonData, 6> partyPokemon;
+    std::array<uint8_t, 6> originalPartySpecies{0, 0, 0, 0, 0, 0};
+    std::array<uint16_t, 6> originalPartySpeciesGen3{0, 0, 0, 0, 0, 0};
     
     // Gen 3 save block info
     Generation3Utils::SaveBlock gen3BlockA;
@@ -308,6 +310,21 @@ private:
     const char* getMoveNameGen3(uint16_t move) const;
     const char* getItemName(uint8_t item) const;
     const char* getItemNameGen3(uint16_t item) const;
+
+    // Pokedex update helpers
+    void updatePokedexForNewPokemon();
+    void updatePokedexGen1();
+    void updatePokedexGen2();
+    void updatePokedexGen3();
+    
+    bool isPokedexBitSet(const std::string& buffer, size_t offset, uint16_t pokedexNum) const;
+    void setPokedexBit(std::string& buffer, size_t offset, uint16_t pokedexNum);
+    void setPokedexBitGen3(std::string& buffer, size_t sectionOffset, 
+                           size_t dataOffset, uint16_t pokedexNum);
+    bool isPokedexBitSetGen3(const std::string& buffer, size_t sectionOffset,
+                              size_t dataOffset, uint16_t pokedexNum) const;
+    
+    uint16_t getPokedexNumber(uint16_t speciesId) const;
     
     // IV/DV helpers
     uint8_t getIV(uint16_t ivData, const std::string& stat) const;
@@ -317,6 +334,8 @@ private:
     bool fileExists(const std::string& path);
     std::string getOutputPath();
     bool saveFile();
+
+    void adjustScrollbarForSelectedField();
 
 protected:
     // SDLAppBase overrides

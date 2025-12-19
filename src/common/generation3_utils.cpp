@@ -154,11 +154,11 @@ bool parseSaveBlocks(const std::string& buffer, SaveBlock& blockA, SaveBlock& bl
 
 const SaveBlock* getActiveSaveBlock(const SaveBlock& blockA, const SaveBlock& blockB) {
     // The block with the higher save index is the active one
-    // Handle wraparound: if one is 0xFFFFFFFF and other is 0, the 0 is newer
-    if (blockA.saveIndex == 0xFFFFFFFF && blockB.saveIndex == 0) {
+    // Handle wraparound: if one is 0xFFFFFFFF and other isn't, the one that isn't is newer
+    if (blockA.saveIndex == 0xFFFFFFFF && blockB.saveIndex != 0xFFFFFFFF) {
         return &blockB;
     }
-    if (blockB.saveIndex == 0xFFFFFFFF && blockA.saveIndex == 0) {
+    if (blockB.saveIndex == 0xFFFFFFFF && blockA.saveIndex != 0xFFFFFFFF) {
         return &blockA;
     }
     return (blockA.saveIndex >= blockB.saveIndex) ? &blockA : &blockB;

@@ -229,11 +229,13 @@ void PokemonPartyEditor::parsePokemonData() {
             
             if (i >= partyCount) {
                 pkmn = PokemonData();
+                originalPartySpeciesGen3[i] = 0;
                 continue;
             }
             
             size_t offset = pokemonDataOffset + (i * GEN3_POKEMON_DATA_SIZE);
             parseGen3Pokemon(pkmn, offset);
+            originalPartySpeciesGen3[i] = pkmn.speciesGen3;  // Store original
         }
         return;
     }
@@ -262,6 +264,7 @@ void PokemonPartyEditor::parsePokemonData() {
         
         if (i >= partyCount || partySpecies[i] == 0 || partySpecies[i] == 0xFF) {
             pkmn = PokemonData();
+            originalPartySpecies[i] = 0;  // Store original
             continue;
         }
         
@@ -272,6 +275,8 @@ void PokemonPartyEditor::parsePokemonData() {
         } else if (generation == 2) {
             parseGen2Pokemon(pkmn, offset);
         }
+        
+        originalPartySpecies[i] = pkmn.species;  // Store original
     }
     
     // Calculate name offsets
@@ -303,7 +308,7 @@ void PokemonPartyEditor::parsePokemonData() {
         for (size_t j = 0; j < nameLength; j++) {
             nameBytes[j] = DataUtils::readU8(fileBuffer, offset + j);
         }
-        partyPokemon[i].otName = decodeText(nameBytes, encoding);
+        partyPokemon[i].otName = decodeText(nameBytes,encoding);
     }
     
     // Read nicknames
@@ -481,6 +486,350 @@ void PokemonPartyEditor::parseGen3Pokemon(PokemonData& pkmn, size_t offset) {
     pkmn.speed = DataUtils::readU16LE(fileBuffer, offset + Generation3Utils::POKEMON_SPEED_OFFSET);
     pkmn.specialAttack = DataUtils::readU16LE(fileBuffer, offset + Generation3Utils::POKEMON_SP_ATTACK_OFFSET);
     pkmn.specialDefense = DataUtils::readU16LE(fileBuffer, offset + Generation3Utils::POKEMON_SP_DEFENSE_OFFSET);
+}
+
+// ============================================================================
+// Pokedex helpers
+// ============================================================================
+
+uint16_t PokemonPartyEditor::getPokedexNumber(uint16_t speciesId) const {
+    const PokemonIndex::PokemonInfo* info = PokemonIndex::getPokemonInfo(speciesId, generation);
+    if (info) {
+        return info->nationalDexNum;
+    }
+    return 0; // Invalid
+}
+
+bool PokemonPartyEditor::isPokedexBitSet(const std::string& buffer, size_t offset, 
+                                          uint16_t pokedexNum) const {
+    if (generation == 1) {
+        // Gen 1: 0-indexed, bit-packed
+        if (pokedexNum == 0 || pokedexNum > 151) return false;
+        uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
+        size_t byteIndex = bitIndex >> 3;     // Divide by 8
+        uint8_t bitPos = bitIndex & 7;        // Modulo 8
+        
+        if (offset + byteIndex >= fileSize) return false;
+        uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
+        return (byte >> bitPos) & 1;
+    } else if (generation == 2) {
+        // Gen 2: 1-indexed (bit 0 = Bulbasaur #1), up to Celebi #251
+        if (pokedexNum == 0 || pokedexNum > 251) return false;
+        uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
+        size_t byteIndex = bitIndex >> 3;
+        uint8_t bitPos = bitIndex & 7;
+        
+        if (offset + byteIndex >= fileSize) return false;
+        uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
+        return (byte >> bitPos) & 1;
+    }
+    return false;
+}
+
+void PokemonPartyEditor::setPokedexBit(std::string& buffer, size_t offset, uint16_t pokedexNum) {
+    if (generation == 1) {
+        // Gen 1: 0-indexed
+        if (pokedexNum == 0 || pokedexNum > 151) return;
+        uint16_t bitIndex = pokedexNum - 1;
+        size_t byteIndex = bitIndex >> 3;
+        uint8_t bitPos = bitIndex & 7;
+        
+        if (offset + byteIndex >= fileSize) return;
+        uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
+        byte |= (1 << bitPos);
+        DataUtils::writeU8(buffer, offset + byteIndex, byte);
+    } else if (generation == 2) {
+        // Gen 2: 1-indexed (bit 0 = Bulbasaur #1)
+        if (pokedexNum == 0 || pokedexNum > 251) return;
+        uint16_t bitIndex = pokedexNum - 1;
+        size_t byteIndex = bitIndex >> 3;
+        uint8_t bitPos = bitIndex & 7;
+        
+        if (offset + byteIndex >= fileSize) return;
+        uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
+        byte |= (1 << bitPos);
+        DataUtils::writeU8(buffer, offset + byteIndex, byte);
+    }
+}
+
+void PokemonPartyEditor::setPokedexBitGen3(std::string& buffer, size_t sectionOffset, 
+                                            size_t dataOffset, uint16_t pokedexNum) {
+    if (pokedexNum == 0 || pokedexNum > 386) return;
+    
+    uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
+    size_t byteIndex = bitIndex >> 3;     // Divide by 8
+    uint8_t bitPos = bitIndex & 7;        // Modulo 8
+    
+    size_t absoluteOffset = sectionOffset + dataOffset + byteIndex;
+    if (absoluteOffset >= fileSize) return;
+    
+    uint8_t byte = DataUtils::readU8(buffer, absoluteOffset);
+    byte |= (1 << bitPos);
+    DataUtils::writeU8(buffer, absoluteOffset, byte);
+}
+
+bool PokemonPartyEditor::isPokedexBitSetGen3(const std::string& buffer, size_t sectionOffset,
+                                               size_t dataOffset, uint16_t pokedexNum) const {
+    if (pokedexNum == 0 || pokedexNum > 386) return false;
+    
+    uint16_t bitIndex = pokedexNum - 1;
+    size_t byteIndex = bitIndex >> 3;
+    uint8_t bitPos = bitIndex & 7;
+    
+    size_t absoluteOffset = sectionOffset + dataOffset + byteIndex;
+    if (absoluteOffset >= fileSize) return false;
+    
+    uint8_t byte = DataUtils::readU8(buffer, absoluteOffset);
+    return (byte >> bitPos) & 1;
+}
+
+void PokemonPartyEditor::updatePokedexGen1() {
+    // Gen 1 offsets
+    constexpr size_t POKEDEX_OWNED_OFFSET = 0x25A3;
+    constexpr size_t POKEDEX_SEEN_OFFSET = 0x25B6;
+    
+    // Check each party slot
+    for (size_t i = 0; i < partyCount; i++) {
+        uint8_t currentSpecies = partyPokemon[i].species;
+        uint8_t originalSpecies = originalPartySpecies[i];
+        
+        // Skip if species hasn't changed or is empty
+        if (currentSpecies == originalSpecies || currentSpecies == 0 || currentSpecies == 0xFF) {
+            continue;
+        }
+        
+        // Get national dex number
+        uint16_t dexNum = getPokedexNumber(static_cast<uint16_t>(currentSpecies));
+        if (dexNum == 0 || dexNum > 151) continue;
+        
+        // Check if already owned/seen
+        bool alreadyOwned = isPokedexBitSet(fileBuffer, POKEDEX_OWNED_OFFSET, dexNum);
+        bool alreadySeen = isPokedexBitSet(fileBuffer, POKEDEX_SEEN_OFFSET, dexNum);
+        
+        // Set owned bit (which also implies seen)
+        if (!alreadyOwned) {
+            setPokedexBit(fileBuffer, POKEDEX_OWNED_OFFSET, dexNum);
+            std::cout << "Updated Pokédex: Marked #" << dexNum << " as owned" << std::endl;
+        }
+        
+        // Set seen bit
+        if (!alreadySeen) {
+            setPokedexBit(fileBuffer, POKEDEX_SEEN_OFFSET, dexNum);
+            std::cout << "Updated Pokédex: Marked #" << dexNum << " as seen" << std::endl;
+        }
+    }
+}
+
+void PokemonPartyEditor::updatePokedexGen2() {
+    // Gen 2 offsets - primary and secondary
+    size_t ownedOffsetPrimary, seenOffsetPrimary;
+    size_t ownedOffsetSecondary, seenOffsetSecondary;
+    
+    if (gameType == GameType::GEN2_GS) {
+        if (isJapanese) {
+            ownedOffsetPrimary = 0x29CE;
+            seenOffsetPrimary = 0x29EE;
+            ownedOffsetSecondary = 0x7BCE;
+            seenOffsetSecondary = 0x7BEE;
+        } else {
+            ownedOffsetPrimary = 0x2A4C;
+            seenOffsetPrimary = 0x2A6C;
+            ownedOffsetSecondary = 0x12AA;
+            seenOffsetSecondary = 0x12CA;
+        }
+    } else { // Crystal
+        if (isJapanese) {
+            ownedOffsetPrimary = 0x29AA;
+            seenOffsetPrimary = 0x29CA;
+            ownedOffsetSecondary = 0x7BAA;
+            seenOffsetSecondary = 0x7BCA;
+        } else {
+            ownedOffsetPrimary = 0x2A27;
+            seenOffsetPrimary = 0x2A47;
+            ownedOffsetSecondary = 0x1C27;
+            seenOffsetSecondary = 0x1C47;
+        }
+    }
+    
+    // Check each party slot
+    for (size_t i = 0; i < partyCount; i++) {
+        uint8_t currentSpecies = partyPokemon[i].species;
+        uint8_t originalSpecies = originalPartySpecies[i];
+        
+        // Skip if species hasn't changed or is empty
+        if (currentSpecies == originalSpecies || currentSpecies == 0 || currentSpecies == 0xFF) {
+            continue;
+        }
+        
+        // Get national dex number
+        uint16_t dexNum = getPokedexNumber(static_cast<uint16_t>(currentSpecies));
+        if (dexNum == 0 || dexNum > 251) continue;
+        
+        // Check if already owned/seen in primary save
+        bool alreadyOwned = isPokedexBitSet(fileBuffer, ownedOffsetPrimary, dexNum);
+        bool alreadySeen = isPokedexBitSet(fileBuffer, seenOffsetPrimary, dexNum);
+        
+        // Update primary save
+        if (!alreadyOwned) {
+            setPokedexBit(fileBuffer, ownedOffsetPrimary, dexNum);
+            std::cout << "Updated Pokédex (primary): Marked #" << dexNum << " as owned" << std::endl;
+        }
+        
+        if (!alreadySeen) {
+            setPokedexBit(fileBuffer, seenOffsetPrimary, dexNum);
+            std::cout << "Updated Pokédex (primary): Marked #" << dexNum << " as seen" << std::endl;
+        }
+        
+        // Update secondary save
+        if (!alreadyOwned) {
+            setPokedexBit(fileBuffer, ownedOffsetSecondary, dexNum);
+        }
+        
+        if (!alreadySeen) {
+            setPokedexBit(fileBuffer, seenOffsetSecondary, dexNum);
+        }
+    }
+}
+
+void PokemonPartyEditor::updatePokedexGen3() {
+    if (!activeGen3Block) return;
+    
+    // Find the relevant sections
+    size_t section0Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 0);
+    size_t section1Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 1);
+    size_t section2Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 2);
+    size_t section4Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 4);
+    
+    if (section0Offset == static_cast<size_t>(-1) || 
+        section1Offset == static_cast<size_t>(-1) ||
+        section2Offset == static_cast<size_t>(-1) ||
+        section4Offset == static_cast<size_t>(-1)) {
+        std::cerr << "Could not find required sections for Pokédex update" << std::endl;
+        return;
+    }
+    
+    // Define offsets based on game type
+    size_t ownedOffset, seenAOffset, seenBOffset, seenCOffset;
+    size_t natDexAOffset, natDexBOffset, natDexCOffset;
+    
+    if (gameType == GameType::GEN3_RS) {
+        // Ruby/Sapphire
+        ownedOffset = 0x0028;
+        seenAOffset = 0x005C;
+        seenBOffset = 0x0938;
+        seenCOffset = 0x0C0C;
+        natDexAOffset = 0x0019;
+        natDexBOffset = 0x03A6;
+        natDexCOffset = 0x044C;
+    } else if (gameType == GameType::GEN3_EMERALD) {
+        // Emerald
+        ownedOffset = 0x0028;
+        seenAOffset = 0x005C;
+        seenBOffset = 0x0988;
+        seenCOffset = 0x0CA4;
+        natDexAOffset = 0x0019;
+        natDexBOffset = 0x0402;
+        natDexCOffset = 0x04A8;
+    } else { // FRLG
+        // FireRed/LeafGreen
+        ownedOffset = 0x0028;
+        seenAOffset = 0x005C;
+        seenBOffset = 0x05F8;
+        seenCOffset = 0x0B98;
+        natDexAOffset = 0x001B;
+        natDexBOffset = 0x0068;
+        natDexCOffset = 0x011C;
+    }
+    
+    bool anyPokemonModified = false;
+    
+    // Check each party slot for changes
+    for (size_t i = 0; i < partyCount; i++) {
+        uint16_t currentSpecies = partyPokemon[i].speciesGen3;
+        uint16_t originalSpecies = originalPartySpeciesGen3[i];
+        
+        // Skip if species hasn't changed or is empty
+        if (currentSpecies == originalSpecies || currentSpecies == 0) {
+            continue;
+        }
+        
+        anyPokemonModified = true;
+        
+        // Get national dex number
+        uint16_t dexNum = getPokedexNumber(currentSpecies);
+        if (dexNum == 0 || dexNum > 386) continue;
+        
+        // Check if already owned/seen
+        bool alreadyOwned = isPokedexBitSetGen3(fileBuffer, section0Offset, ownedOffset, dexNum);
+        bool alreadySeenA = isPokedexBitSetGen3(fileBuffer, section0Offset, seenAOffset, dexNum);
+        
+        // Update owned (Section 0)
+        if (!alreadyOwned) {
+            setPokedexBitGen3(fileBuffer, section0Offset, ownedOffset, dexNum);
+            std::cout << "Updated Pokédex: Marked #" << dexNum << " as owned" << std::endl;
+        }
+        
+        // Update all three "seen" copies
+        if (!alreadySeenA) {
+            // Seen A (Section 0)
+            setPokedexBitGen3(fileBuffer, section0Offset, seenAOffset, dexNum);
+            // Seen B (Section 1)
+            setPokedexBitGen3(fileBuffer, section1Offset, seenBOffset, dexNum);
+            // Seen C (Section 4)
+            setPokedexBitGen3(fileBuffer, section4Offset, seenCOffset, dexNum);
+            std::cout << "Updated Pokédex: Marked #" << dexNum << " as seen" << std::endl;
+        }
+    }
+    
+    // For Ruby/Sapphire: Always enable National Dex if any Pokémon was modified
+    if (gameType == GameType::GEN3_RS && anyPokemonModified) {
+        // Field A (Section 0, offset 0x0019, 2 bytes)
+        DataUtils::writeU8(fileBuffer, section0Offset + natDexAOffset, 0x01);
+        DataUtils::writeU8(fileBuffer, section0Offset + natDexAOffset + 1, 0xDA);
+        
+        // Field B (Section 2, offset 0x03A6, bit 6)
+        size_t fieldBOffset = section2Offset + natDexBOffset;
+        if (fieldBOffset < fileSize) {
+            uint8_t fieldB = DataUtils::readU8(fileBuffer, fieldBOffset);
+            fieldB |= (1 << 6);  // Set bit 6
+            DataUtils::writeU8(fileBuffer, fieldBOffset, fieldB);
+        }
+        
+        // Field C (Section 2, offset 0x044C, 2 bytes)
+        DataUtils::writeU8(fileBuffer, section2Offset + natDexCOffset, 0x02);
+        DataUtils::writeU8(fileBuffer, section2Offset + natDexCOffset + 1, 0x03);
+        
+        std::cout << "Enabled National Pokédex for Ruby/Sapphire" << std::endl;
+    }
+    
+    // Update checksums for modified sections if any changes were made
+    if (anyPokemonModified) {
+        // Section 0 (has owned, seen A, and possibly nat dex A)
+        Generation3Utils::updateSectionChecksum(fileBuffer, section0Offset, 
+                                               Generation3Utils::GEN3_SECTION_SIZES[0]);
+        
+        // Section 1 (has seen B)
+        Generation3Utils::updateSectionChecksum(fileBuffer, section1Offset,
+                                               Generation3Utils::GEN3_SECTION_SIZES[1]);
+        
+        // Section 2 (has nat dex B and C for RS/E, or just B for FRLG)
+        Generation3Utils::updateSectionChecksum(fileBuffer, section2Offset,
+                                                Generation3Utils::GEN3_SECTION_SIZES[2]);
+        
+        // Section 4 (has seen C)
+        Generation3Utils::updateSectionChecksum(fileBuffer, section4Offset,
+                                               Generation3Utils::GEN3_SECTION_SIZES[4]);
+    }
+}
+
+void PokemonPartyEditor::updatePokedexForNewPokemon() {
+    if (generation == 1) {
+        updatePokedexGen1();
+    } else if (generation == 2) {
+        updatePokedexGen2();
+    } else if (generation == 3) {
+        updatePokedexGen3();
+    }
 }
 
 // ============================================================================
@@ -884,7 +1233,7 @@ std::string PokemonPartyEditor::getPokemonTabName(int index) const {
         return name ? name : "???";
     }
     
-    const char* name = PokemonIndex::getPokemonName(partyPokemon[index].species, generation);
+    const char* name = PokemonIndex::getPokemonName(static_cast<uint16_t>(partyPokemon[index].species), generation);
     return name ? name : "???";
 }
 
@@ -1031,7 +1380,7 @@ std::string PokemonPartyEditor::getFieldValue(int pokemonIndex, EditField field)
                 const char* name = PokemonIndex::getPokemonName(pkmn.speciesGen3, generation);
                 ss << (name ? name : "None") << " [" << HexUtils::toHexString(pkmn.speciesGen3, 4) << "]";
             } else {
-                const char* name = PokemonIndex::getPokemonName(pkmn.species, generation);
+                const char* name = PokemonIndex::getPokemonName(static_cast<uint16_t>(pkmn.species), generation);
                 ss << (name ? name : "None") << " [" << HexUtils::toHexString(pkmn.species, 2) << "]";
             }
             break;
@@ -2258,6 +2607,7 @@ std::string PokemonPartyEditor::getOutputPath() {
 
 bool PokemonPartyEditor::saveFile() {
     writePokemonDataToBuffer();
+    updatePokedexForNewPokemon();
     updateChecksum();
     
     if (!overwriteMode) {
@@ -2285,6 +2635,15 @@ bool PokemonPartyEditor::saveFile() {
     }
     outFile.write(fileBuffer.data(), static_cast<std::streamsize>(fileSize));
     outFile.close();
+    
+    // Update original species tracking after successful save
+    for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
+        if (generation == 3) {
+            originalPartySpeciesGen3[i] = partyPokemon[i].speciesGen3;
+        } else {
+            originalPartySpecies[i] = partyPokemon[i].species;
+        }
+    }
     
     hasUnsavedChanges = false;
     setConfirmOnQuit(false);
@@ -2392,20 +2751,6 @@ void PokemonPartyEditor::render() {
        scrollbar.offset = scrollbar.maxOffset();
    }
    
-   // Find the visible index of the currently selected field
-   auto it = fieldToVisibleIndex.find(selectedField);
-   if (it != fieldToVisibleIndex.end()) {
-       size_t selectedVisibleIndex = it->second;
-       
-       if (selectedVisibleIndex < scrollbar.offset) {
-           scrollbar.offset = selectedVisibleIndex;
-       } else if (selectedVisibleIndex >= scrollbar.offset + scrollbar.visibleItems) {
-           if (scrollbar.visibleItems > 0) {
-               scrollbar.offset = selectedVisibleIndex - scrollbar.visibleItems + 1;
-           }
-       }
-   }
-   
    int rowWidth = windowWidth - 20;
    if (scrollbar.canScroll()) {
        rowWidth -= scrollbar.width;
@@ -2483,6 +2828,34 @@ void PokemonPartyEditor::render() {
 // ============================================================================
 // Event handling
 // ============================================================================
+
+void PokemonPartyEditor::adjustScrollbarForSelectedField() {
+    // Build list of visible fields
+    std::vector<EditField> visibleFields;
+    for (int i = 0; i < static_cast<int>(EditField::FIELD_COUNT); i++) {
+        EditField field = static_cast<EditField>(i);
+        if (isFieldVisible(field)) {
+            visibleFields.push_back(field);
+        }
+    }
+    
+    // Find the visible index of the selected field
+    for (size_t i = 0; i < visibleFields.size(); i++) {
+        if (static_cast<int>(visibleFields[i]) == selectedField) {
+            // Adjust scrollbar if necessary
+            if (i < scrollbar.offset) {
+                // Selected field is above visible area - scroll up
+                scrollbar.offset = i;
+            } else if (i >= scrollbar.offset + scrollbar.visibleItems) {
+                // Selected field is below visible area - scroll down
+                if (scrollbar.visibleItems > 0) {
+                    scrollbar.offset = i - scrollbar.visibleItems + 1;
+                }
+            }
+            break;
+        }
+    }
+}
 
 void PokemonPartyEditor::handleEvent(SDL_Event& event) {
     switch (event.type) {
@@ -2579,6 +2952,8 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
                             selectedField = static_cast<int>(EditField::FIELD_COUNT) - 1;
                         }
                     } while (!isFieldVisible(static_cast<EditField>(selectedField)));
+
+                    adjustScrollbarForSelectedField();
                     requestRedraw();
                 } else if (key == SDLK_DOWN) {
                     do {
@@ -2587,6 +2962,8 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
                             selectedField = 0;
                         }
                     } while (!isFieldVisible(static_cast<EditField>(selectedField)));
+                    
+                    adjustScrollbarForSelectedField();
                     requestRedraw();
                 } else if (key == SDLK_LEFT) {
                     currentPokemonIndex--;
