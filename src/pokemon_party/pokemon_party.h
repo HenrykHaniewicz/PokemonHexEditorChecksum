@@ -262,6 +262,7 @@ private:
     size_t getNameLength() const;
     size_t getMaxNameChars() const;
     void parsePokemonData();
+    void compactPartyData();
     void writePokemonDataToBuffer();
     void updateChecksum();
     void updateChecksumGen1();

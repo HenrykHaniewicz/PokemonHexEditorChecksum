@@ -836,6 +836,39 @@ void PokemonPartyEditor::updatePokedexForNewPokemon() {
 // Writing data back
 // ============================================================================
 
+void PokemonPartyEditor::compactPartyData() {
+    size_t writeIndex = 0;
+
+    for (size_t readIndex = 0; readIndex < MAX_PARTY_SIZE; readIndex++) {
+        if (partyPokemon[readIndex].isEmpty()) {
+            continue;
+        }
+
+        if (writeIndex != readIndex) {
+            partyPokemon[writeIndex] = partyPokemon[readIndex];
+        }
+
+        if (generation != 3) {
+            partySpecies[writeIndex] = partyPokemon[writeIndex].species;
+        }
+
+        writeIndex++;
+    }
+
+    for (size_t i = writeIndex; i < MAX_PARTY_SIZE; i++) {
+        partyPokemon[i] = PokemonData();
+        if (generation != 3) {
+            partySpecies[i] = 0xFF;
+        }
+    }
+
+    partyCount = static_cast<uint8_t>(writeIndex);
+
+    if (generation != 3) {
+        partySpecies[MAX_PARTY_SIZE] = 0xFF;
+    }
+}
+
 void PokemonPartyEditor::writePokemonDataToBuffer() {
     if (generation == 3) {
         // Write party count
@@ -2148,11 +2181,13 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                     uint16_t species = static_cast<uint16_t>(std::stoul(value, nullptr, 16));
                     pkmn.speciesGen3 = species;
                     
-                    // Update misc flags
                     if (species != 0) {
                         pkmn.miscFlags |= Generation3Utils::MISC_FLAG_HAS_SPECIES;
                     } else {
                         pkmn.miscFlags &= ~Generation3Utils::MISC_FLAG_HAS_SPECIES;
+                        partyCount = static_cast<uint8_t>(std::count_if(
+                            partyPokemon.begin(), partyPokemon.end(),
+                            [](const PokemonData& partyPkmn) { return !partyPkmn.isEmpty(); }));
                     }
                     
                     if (species != 0 && pokemonIndex >= partyCount) {
@@ -2171,7 +2206,11 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                         }
                     }
                     
-                    if (species != 0 && species != 0xFF && pokemonIndex >= partyCount) {
+                    if (species == 0 || species == 0xFF) {
+                        partyCount = static_cast<uint8_t>(std::count_if(
+                            partyPokemon.begin(), partyPokemon.end(),
+                            [](const PokemonData& partyPkmn) { return !partyPkmn.isEmpty(); }));
+                    } else if (pokemonIndex >= partyCount) {
                         partyCount = pokemonIndex + 1;
                     }
                 }
@@ -2606,6 +2645,7 @@ std::string PokemonPartyEditor::getOutputPath() {
 }
 
 bool PokemonPartyEditor::saveFile() {
+    compactPartyData();
     writePokemonDataToBuffer();
     updatePokedexForNewPokemon();
     updateChecksum();
@@ -2783,7 +2823,7 @@ void PokemonPartyEditor::render() {
        renderText(fieldName + ":", rowRect.x + 5, y + 2, colors.text);
        
        // Field value
-       int valueX = rowRect.x + 220;  // Increased to accommodate longer field names
+       int valueX = rowRect.x + 220;
        if (editing && static_cast<int>(field) == selectedField) {
            std::string editText = editBuffer;
            if (editingByName) {

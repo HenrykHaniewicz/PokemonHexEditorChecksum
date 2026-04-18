@@ -62,9 +62,9 @@ bool PokemonBagEditor::findGen3CurrentSave() {
 
     // The block with the higher save index is the current one
     // Handle wraparound: if one is 0xFFFFFFFF and other is 0, the 0 is newer
-    if (saveIndex0 == 0xFFFFFFFF && saveIndex1 == 0) {
+    if (saveIndex0 == 0xFFFFFFFF && saveIndex1 != 0xFFFFFFFF) {
         gen3CurrentSaveOffset = Generation3Utils::GEN3_BLOCK_SIZE;
-    } else if (saveIndex1 == 0xFFFFFFFF && saveIndex0 == 0) {
+    } else if (saveIndex1 == 0xFFFFFFFF && saveIndex0 != 0xFFFFFFFF) {
         gen3CurrentSaveOffset = 0;
     } else if (saveIndex0 >= saveIndex1) {
         gen3CurrentSaveOffset = 0;
