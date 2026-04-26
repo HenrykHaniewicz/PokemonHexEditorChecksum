@@ -9,6 +9,58 @@
 #include <utility>
 
 namespace Generation3Utils {
+// ============================================================================
+// Trainer Memory Addresses for Generation 3 Games
+//
+// Different Generation 3 games store the trainer class names table and the
+// trainer data structures at unique offsets within the ROM.  The existing
+// trainer editor was hardcoded to Ruby's offsets which meant other games
+// were incorrectly parsed.  Define a simple structure and constants here so
+// that the editor can select the correct offsets based on the chosen game.
+
+// Structure holding the three key addresses used by the trainer editor:
+//  - classNames:   start of the trainer class name table (13‑byte records)
+//  - trainerDataStart: start of the trainer data table (0x28‑byte records)
+//  - trainerDataEnd:   end of the trainer data table (one byte past the end)
+struct TrainerMemoryAddresses {
+    uint32_t classNames;
+    uint32_t trainerDataStart;
+    uint32_t trainerDataEnd;
+};
+
+// Offsets for each Generation 3 game.  These values are based on disassembly
+// and community documentation for the English language ROMs.  If you wish to
+// support additional revisions or languages you may need to supply the
+// appropriate addresses here as well.
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_RUBY{
+    0x1F0220, // classNames
+    0x1F053C, // trainerDataStart
+    0x1F7184  // trainerDataEnd
+};
+
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_SAPPHIRE{
+    0x1F01B0, // classNames
+    0x1F04CC, // trainerDataStart
+    0x1F7113  // trainerDataEnd
+};
+
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_EMERALD{
+    0x30FCD4, // classNames
+    0x310058, // trainerDataStart
+    0x3185C7  // trainerDataEnd
+};
+
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_FIRERED{
+    0x23E558, // classNames
+    0x23EAF0, // trainerDataStart
+    0x245EDF  // trainerDataEnd
+};
+
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_LEAFGREEN{
+    0x23E5A4, // classNames (corrected)
+    0x23EB3C, // trainerDataStart
+    0x245F2B  // trainerDataEnd
+};
 
 // Gen 3 save structure constants
 static constexpr size_t GEN3_SAVE_SIZE = 0x20000;        // 128KB save file

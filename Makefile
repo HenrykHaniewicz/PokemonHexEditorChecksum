@@ -28,6 +28,12 @@ POKEMON_PARTY_BIN = pokemon_party
 
 BINS = $(HEX_EDITOR_BIN) $(CHECKSUM_BIN) $(MIRAGE_ISLAND_BIN) $(POKEMON_BAG_BIN) $(POKEMON_PARTY_BIN)
 
+# Define the new Pokemon Trainer editor binary
+POKEMON_TRAINER_BIN = pokemon_trainer
+
+# Append it to the list of executables
+BINS += $(POKEMON_TRAINER_BIN)
+
 # Common objects used by multiple targets
 COMMON_OBJS = $(OBJDIR)/common_sdl_app_base.o
 GEN1_OBJS = $(OBJDIR)/common_generation1_utils.o
@@ -54,6 +60,10 @@ POKEMON_BAG_OBJS = $(COMMON_OBJS) $(GEN1_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
 POKEMON_PARTY_OBJS = $(COMMON_OBJS) $(GEN1_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
                    $(OBJDIR)/pokemon_party_pokemon_party.o \
                    $(OBJDIR)/pokemon_party_main.o
+
+POKEMON_TRAINER_OBJS = $(COMMON_OBJS) $(GEN2_OBJS) $(GEN3_OBJS) \
+                       $(OBJDIR)/pokemon_trainer_pokemon_trainer.o \
+                       $(OBJDIR)/pokemon_trainer_main.o
 
 # Default target
 all: $(BINS)
@@ -86,6 +96,9 @@ $(POKEMON_BAG_BIN): $(POKEMON_BAG_OBJS)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 $(POKEMON_PARTY_BIN): $(POKEMON_PARTY_OBJS)
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+$(POKEMON_TRAINER_BIN): $(POKEMON_TRAINER_OBJS)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 # Include dependency files (if they exist)

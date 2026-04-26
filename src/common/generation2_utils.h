@@ -42,6 +42,31 @@ ChecksumConfig getGoldSilverConfig(bool isJapanese);
 // Get checksum configuration for Crystal
 ChecksumConfig getCrystalConfig(bool isJapanese);
 
+// Trainer memory addresses
+struct TrainerMemoryAddresses {
+    uint32_t classNamesStart;   // Start of the trainer class name table
+    uint32_t classNamesEnd;     // End of the trainer class name table (one past last byte)
+    uint32_t pointerStart;      // Start of the 16 bit pointer table
+    uint32_t pointerEnd;        // End of the pointer table (address of last pointer's second byte)
+    uint32_t lastTrainerByte;   // Absolute offset of the final byte of the trainer data
+};
+
+static constexpr TrainerMemoryAddresses TRAINER2_ADDRESSES_GS{
+    0x1B0955, // classNamesStart
+    0x1B0B73, // classNamesEnd
+    0x03993E, // pointerStart
+    0x0399C1, // pointerEnd (last pointer begins at 0x0399C0)
+    0x03B684  // lastTrainerByte
+};
+
+static constexpr TrainerMemoryAddresses TRAINER2_ADDRESSES_CRYSTAL{
+    0x02C1EF, // classNamesStart
+    0x02C419, // classNamesEnd
+    0x039999, // pointerStart
+    0x039A1E, // pointerEnd (last pointer begins at 0x039A1D)
+    0x03BA66  // lastTrainerByte
+};
+
 } // namespace Generation2Utils
 
 #endif // GENERATION2_UTILS_H

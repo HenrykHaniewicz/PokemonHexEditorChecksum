@@ -909,18 +909,32 @@ bool SDLAppBase::isPointInRect(int x, int y, const SDL_Rect& rect) {
 
 void SDLAppBase::getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight, 
                                        int& thumbY, int& thumbHeight) const {
-    sbX = windowWidth - scrollbar.width;
-    sbY = scrollbar.headerOffset;
-    sbHeight = windowHeight - scrollbar.headerOffset;
-    
-    if (scrollbar.canScroll()) {
-        float thumbRatio = static_cast<float>(scrollbar.visibleItems) / 
-                          static_cast<float>(scrollbar.totalItems);
+    // Determine which scrollbar state to use
+    const ScrollbarState& sbState = activeScrollbarState ? *activeScrollbarState : scrollbar;
+
+    // Establish the base rectangle for the scrollbar.  If a custom geometry
+    // has been specified via setScrollbarArea(), use that; otherwise anchor
+    // the scrollbar to the right edge of the window and use the default
+    // header offset and height.
+    if (scrollbarUseCustomGeometry) {
+        sbX = scrollbarCustomX;
+        sbY = scrollbarCustomY;
+        sbHeight = scrollbarCustomHeight;
+    } else {
+        sbX = windowWidth - sbState.width;
+        sbY = sbState.headerOffset;
+        sbHeight = windowHeight - sbState.headerOffset;
+    }
+
+    // Compute thumb position and size using the selected state and geometry
+    if (sbState.canScroll()) {
+        float thumbRatio = static_cast<float>(sbState.visibleItems) /
+                           static_cast<float>(sbState.totalItems);
         thumbHeight = std::max(30, static_cast<int>(sbHeight * thumbRatio));
-        
-        size_t maxOff = scrollbar.maxOffset();
-        float scrollRatio = (maxOff > 0) ? (static_cast<float>(scrollbar.offset) / 
-                           static_cast<float>(maxOff)) : 0.0f;
+
+        size_t maxOff = sbState.maxOffset();
+        float scrollRatio = (maxOff > 0) ? (static_cast<float>(sbState.offset) /
+                               static_cast<float>(maxOff)) : 0.0f;
         thumbY = sbY + static_cast<int>((sbHeight - thumbHeight) * scrollRatio);
     } else {
         thumbHeight = sbHeight;
@@ -931,74 +945,94 @@ void SDLAppBase::getScrollbarGeometry(int& sbX, int& sbY, int& sbHeight,
 void SDLAppBase::renderScrollbar(SDL_Renderer* targetRenderer) {
     if (!targetRenderer) targetRenderer = renderer;
     if (!targetRenderer) return;  // Safety check
-    
+
+    // Determine which scrollbar state to use
+    ScrollbarState& sbState = activeScrollbarState ? *activeScrollbarState : scrollbar;
+
     int sbX, sbY, sbHeight, thumbY, thumbHeight;
     getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-    
-    SDL_Rect scrollBgRect = {sbX, sbY, scrollbar.width, sbHeight};
+
+    // Draw track using the selected width
+    SDL_Rect scrollBgRect = {sbX, sbY, sbState.width, sbHeight};
     renderFilledRect(scrollBgRect, colors.scrollbarBg, targetRenderer);
-    
-    SDL_Rect thumbRect = {sbX + 2, thumbY, scrollbar.width - 4, thumbHeight};
-    SDL_Color thumbColor = scrollbar.dragging ? colors.scrollbarHover : colors.scrollbarFg;
+
+    // Determine thumb color based on dragging state
+    SDL_Color thumbColor = sbState.dragging ? colors.scrollbarHover : colors.scrollbarFg;
+    SDL_Rect thumbRect = {sbX + 2, thumbY, sbState.width - 4, thumbHeight};
     renderFilledRect(thumbRect, thumbColor, targetRenderer);
 }
 
 bool SDLAppBase::handleScrollbarClick(int x, int y) {
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+
     int sbX, sbY, sbHeight, thumbY, thumbHeight;
     getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-    
-    if (x < sbX || x >= sbX + scrollbar.width ||
+
+    // Check if the click is within the scrollbar bounds
+    if (x < sbX || x >= sbX + sb.width ||
         y < sbY || y >= sbY + sbHeight) {
         return false;
     }
-    
-    if (!scrollbar.canScroll()) return true;
-    
+
+    // If the list doesn't need scrolling, simply consume the click
+    if (!sb.canScroll()) return true;
+
+    // Determine whether we clicked on the thumb or outside it
     if (y >= thumbY && y < thumbY + thumbHeight) {
-        scrollbar.dragging = true;
-        scrollbar.dragStartY = y;
-        size_t maxOff = scrollbar.maxOffset();
-        scrollbar.dragStartRatio = (maxOff > 0) ? (static_cast<float>(scrollbar.offset) / 
-                                   static_cast<float>(maxOff)) : 0.0f;
+        // Begin dragging
+        sb.dragging = true;
+        sb.dragStartY = y;
+        size_t maxOff = sb.maxOffset();
+        sb.dragStartRatio = (maxOff > 0) ? (static_cast<float>(sb.offset) /
+                                           static_cast<float>(maxOff)) : 0.0f;
     } else {
+        // Jump to the clicked ratio within the scrollbar
         float clickRatio = static_cast<float>(y - sbY) / static_cast<float>(sbHeight);
         scrollToRatio(clickRatio);
     }
-    
+
     needsRedraw = true;
     return true;
 }
 
 void SDLAppBase::handleScrollbarDrag(int y) {
-    if (!scrollbar.dragging || !scrollbar.canScroll()) return;
-    
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+
+    if (!sb.dragging || !sb.canScroll()) return;
+
     int sbX, sbY, sbHeight, thumbY, thumbHeight;
     getScrollbarGeometry(sbX, sbY, sbHeight, thumbY, thumbHeight);
-    
+
     int effectiveHeight = sbHeight - thumbHeight;
     if (effectiveHeight <= 0) return;  // Prevent division by zero
-    
-    int deltaY = y - scrollbar.dragStartY;
+
+    int deltaY = y - sb.dragStartY;
     float deltaRatio = static_cast<float>(deltaY) / static_cast<float>(effectiveHeight);
-    float newRatio = scrollbar.dragStartRatio + deltaRatio;
-    
+    float newRatio = sb.dragStartRatio + deltaRatio;
+
     scrollToRatio(newRatio);
 }
 
 void SDLAppBase::handleScrollbarRelease() {
-    if (scrollbar.dragging) {
-        scrollbar.dragging = false;
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    if (sb.dragging) {
+        sb.dragging = false;
         needsRedraw = true;
     }
 }
 
 void SDLAppBase::scrollBy(int64_t items) {
-    if (!scrollbar.canScroll()) return;
-    
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    if (!sb.canScroll()) return;
+
     // Safe conversion with bounds checking
-    int64_t currentOffset = static_cast<int64_t>(scrollbar.offset);
-    int64_t maxOff = static_cast<int64_t>(scrollbar.maxOffset());
-    
+    int64_t currentOffset = static_cast<int64_t>(sb.offset);
+    int64_t maxOff = static_cast<int64_t>(sb.maxOffset());
+
     // Check for overflow before adding
     int64_t newOffset;
     if (items > 0 && currentOffset > std::numeric_limits<int64_t>::max() - items) {
@@ -1008,72 +1042,80 @@ void SDLAppBase::scrollBy(int64_t items) {
     } else {
         newOffset = currentOffset + items;
     }
-    
+
     newOffset = std::max(static_cast<int64_t>(0), newOffset);
     newOffset = std::min(maxOff, newOffset);
-    
-    if (static_cast<size_t>(newOffset) != scrollbar.offset) {
-        scrollbar.offset = static_cast<size_t>(newOffset);
+
+    if (static_cast<size_t>(newOffset) != sb.offset) {
+        sb.offset = static_cast<size_t>(newOffset);
         needsRedraw = true;
     }
 }
 
 void SDLAppBase::scrollBySmooth(float items) {
-    if (!scrollbar.canScroll()) return;
-    
-    scrollbar.accumulatedScroll += items;
-    
-    while (scrollbar.accumulatedScroll >= 1.0f) {
-        if (scrollbar.offset < scrollbar.maxOffset()) {
-            scrollbar.offset++;
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    if (!sb.canScroll()) return;
+
+    sb.accumulatedScroll += items;
+
+    while (sb.accumulatedScroll >= 1.0f) {
+        if (sb.offset < sb.maxOffset()) {
+            sb.offset++;
             needsRedraw = true;
         }
-        scrollbar.accumulatedScroll -= 1.0f;
+        sb.accumulatedScroll -= 1.0f;
     }
-    while (scrollbar.accumulatedScroll <= -1.0f) {
-        if (scrollbar.offset > 0) {
-            scrollbar.offset--;
+    while (sb.accumulatedScroll <= -1.0f) {
+        if (sb.offset > 0) {
+            sb.offset--;
             needsRedraw = true;
         }
-        scrollbar.accumulatedScroll += 1.0f;
+        sb.accumulatedScroll += 1.0f;
     }
-    
-    if (scrollbar.offset == 0 && scrollbar.accumulatedScroll < 0) {
-        scrollbar.accumulatedScroll = 0;
+
+    if (sb.offset == 0 && sb.accumulatedScroll < 0) {
+        sb.accumulatedScroll = 0;
     }
-    if (scrollbar.offset >= scrollbar.maxOffset() && scrollbar.accumulatedScroll > 0) {
-        scrollbar.accumulatedScroll = 0;
+    if (sb.offset >= sb.maxOffset() && sb.accumulatedScroll > 0) {
+        sb.accumulatedScroll = 0;
     }
 }
 
 void SDLAppBase::scrollToRatio(float ratio) {
-    if (!scrollbar.canScroll()) return;
-    
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    if (!sb.canScroll()) return;
+
     ratio = std::max(0.0f, std::min(1.0f, ratio));
-    size_t maxOff = scrollbar.maxOffset();
-    size_t newOffset = static_cast<size_t>(ratio * static_cast<float>(maxOff) + 0.5f);  // Round instead of truncate
-    newOffset = std::min(newOffset, maxOff);  // Ensure we don't exceed max
-    
-    if (newOffset != scrollbar.offset) {
-        scrollbar.offset = newOffset;
+    size_t maxOff = sb.maxOffset();
+    size_t newOffset = static_cast<size_t>(ratio * static_cast<float>(maxOff) + 0.5f);
+    newOffset = std::min(newOffset, maxOff);
+
+    if (newOffset != sb.offset) {
+        sb.offset = newOffset;
         needsRedraw = true;
     }
 }
 
 void SDLAppBase::addScrollVelocity(float amount, float maxVelocity) {
-    scrollbar.velocity += amount;
-    scrollbar.velocity = std::max(-maxVelocity, std::min(maxVelocity, scrollbar.velocity));
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    sb.velocity += amount;
+    sb.velocity = std::max(-maxVelocity, std::min(maxVelocity, sb.velocity));
 }
 
 void SDLAppBase::updateMomentumScroll(float deltaTime) {
-    if (std::abs(scrollbar.velocity) > ScrollbarState::STOP_THRESHOLD) {
-        float scrollDelta = scrollbar.velocity * deltaTime * 60.0f;
+    // Use the active scrollbar state if set, otherwise the default
+    ScrollbarState& sb = activeScrollbarState ? *activeScrollbarState : scrollbar;
+    if (std::abs(sb.velocity) > ScrollbarState::STOP_THRESHOLD) {
+        float scrollDelta = sb.velocity * deltaTime * 60.0f;
         scrollBySmooth(scrollDelta);
-        scrollbar.velocity *= ScrollbarState::FRICTION;
+        sb.velocity *= ScrollbarState::FRICTION;
         needsRedraw = true;
-    } else if (scrollbar.velocity != 0) {
-        scrollbar.velocity = 0;
-        scrollbar.accumulatedScroll = 0;
+    } else if (sb.velocity != 0) {
+        sb.velocity = 0;
+        sb.accumulatedScroll = 0;
     }
 }
 

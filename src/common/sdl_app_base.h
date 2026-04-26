@@ -152,6 +152,12 @@ protected:
     // ========================================================================
     ColorScheme colors;
     ScrollbarState scrollbar;
+    ScrollbarState* activeScrollbarState{nullptr};
+
+    bool scrollbarUseCustomGeometry{false};
+    int  scrollbarCustomX{0};
+    int  scrollbarCustomY{0};
+    int  scrollbarCustomHeight{0};
     
     // ========================================================================
     // Font Loading Methods
@@ -238,6 +244,18 @@ protected:
     void scrollBy(int64_t items);
     void scrollBySmooth(float items);
     void scrollToRatio(float ratio);
+    void setScrollbarArea(int x, int y, int height, ScrollbarState* state = nullptr) {
+        scrollbarUseCustomGeometry = true;
+        scrollbarCustomX = x;
+        scrollbarCustomY = y;
+        scrollbarCustomHeight = height;
+        activeScrollbarState = state;
+    }
+
+    void resetScrollbarArea() {
+        scrollbarUseCustomGeometry = false;
+        activeScrollbarState = nullptr;
+    }
     void addScrollVelocity(float amount, float maxVelocity = 50.0f);
     void updateMomentumScroll(float deltaTime);
     

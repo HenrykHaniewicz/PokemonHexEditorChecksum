@@ -7,6 +7,32 @@
 
 namespace Generation1Utils {
 
+struct TrainerMemoryAddresses {
+    uint32_t classNamesStart;   // Start of the trainer class name table
+    uint32_t classNamesEnd;     // End of the trainer class name table (one past last byte)
+    uint32_t pointerStart;      // Start of the 16 bit pointer table
+    uint32_t pointerEnd;        // End of the pointer table (address of last pointer's second byte)
+    uint32_t lastTrainerByte;   // Absolute offset of the final byte of the trainer data
+};
+
+static constexpr uint32_t TRAINER1_POINTER_BASE = 0x34000;
+
+static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_RB{
+    0x399FF, // classNamesStart
+    0x39B86, // classNamesEnd
+    0x39D3B, // pointerStart
+    0x39D98, // pointerEnd (last pointer begins at 0x39D97)
+    0x3A52D  // lastTrainerByte
+};
+
+static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_YELLOW{
+    0x3997E, // classNamesStart
+    0x39B05, // classNamesEnd
+    0x39DD1, // pointerStart
+    0x39E2E, // pointerEnd (last pointer begins at 0x39E2D)
+    0x3A5B1  // lastTrainerByte
+};
+
 // Calculate the 8-bit checksum used in Gen 1 Pokemon games
 // Returns the complement of the sum of bytes in the range
 uint8_t calculate8BitChecksum(const std::string& buffer, size_t start, size_t end);
