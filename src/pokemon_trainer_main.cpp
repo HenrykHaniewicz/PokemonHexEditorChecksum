@@ -12,11 +12,11 @@ static void printUsage(const char* progName) {
     std::cerr << std::endl;
     std::cerr << "Arguments:" << std::endl;
     std::cerr << "  <romfile>   Path to the GBA or GBC ROM file" << std::endl;
-    std::cerr << "  <game>      Game name (ruby, sapphire, emerald, firered, leafgreen, gold, silver, crystal)" << std::endl;
+    std::cerr << "  <game>      Game name (ruby, sapphire, emerald, firered, leafgreen, gold, silver, crystal, red, blue, yellow)" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Options:" << std::endl;
     std::cerr << "  -o          Overwrite the input ROM instead of writing to edited_files/" << std::endl;
-    std::cerr << "  -j          Attempt to load a Japanese ROM. Japanese games are not supported and will exit." << std::endl;
+    std::cerr << "  -j          Use Japanese trainer offsets (Gen 1/2 only; unsupported for Gen 3)" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Interactive controls:" << std::endl;
     std::cerr << "  Up/Down        Navigate the trainer list or fields" << std::endl;
@@ -52,14 +52,9 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    // If Japanese flag is set, bail out early. At this time the trainer editor
-    // does not support Japanese ROMs. Inform the user and exit.
-    if (japanese) {
-        std::cerr << "Japanese games are not supported at this time for pokemon_trainer." << std::endl;
-        return 1;
-    }
-
     PokemonTrainerEditor editor;
+    // Configure regional settings on the editor before loading any game data
+    editor.setJapanese(japanese);
     editor.setOverwriteMode(overwrite);
     if (!editor.loadFile(filename)) {
         return 1;

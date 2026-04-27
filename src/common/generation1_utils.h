@@ -33,6 +33,31 @@ static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_YELLOW{
     0x3A5B1  // lastTrainerByte
 };
 
+
+static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_RG_J{
+    0x39D1C, // classNamesStart
+    0x39E5E, // classNamesEnd
+    0x3A0AC, // pointerStart
+    0x3A109, // pointerEnd (last pointer begins at 0x3A108)
+    0x3A89E  // lastTrainerByte
+};
+
+static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_Blue_J{
+    0x39DB5, // classNamesStart
+    0x39EF7, // classNamesEnd
+    0x3A0AC, // pointerStart
+    0x3A109, // pointerEnd (last pointer begins at 0x3A108)
+    0x3A89E  // lastTrainerByte
+};
+
+static constexpr TrainerMemoryAddresses TRAINER1_ADDRESSES_YELLOW_J{
+    0x39D34, // classNamesStart
+    0x39E76, // classNamesEnd
+    0x3A142, // pointerStart
+    0x3A19F, // pointerEnd (last pointer begins at 0x3A19E)
+    0x3A922  // lastTrainerByte
+};
+
 // Calculate the 8-bit checksum used in Gen 1 Pokemon games
 // Returns the complement of the sum of bytes in the range
 uint8_t calculate8BitChecksum(const std::string& buffer, size_t start, size_t end);

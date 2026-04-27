@@ -109,6 +109,19 @@ bool PokemonTrainerEditor::setGame(const std::string& game) {
 
     gameType = GameType::UNKNOWN;
     gameName.clear();
+    {
+        std::string lower = g;
+        // Already lowercased and whitespace removed above
+        if (isJapanese) {
+            if (lower == "ruby" || lower == "pokemonruby" || lower == "rubyversion" ||
+                lower == "sapphire" || lower == "pokemonsapphire" || lower == "sapphireversion" ||
+                lower == "emerald" || lower == "firered" || lower == "fireredversion" ||
+                lower == "leafgreen" || lower == "leafgreenversion") {
+                std::cerr << "Japanese games are not supported for Gen 3 in pokemon_trainer." << std::endl;
+                return false;
+            }
+        }
+    }
     if (g == "ruby" || g == "pokemonruby" || g == "rubyversion") {
         gameType = GameType::GEN3_RS;
         gameName = "Pokemon Ruby";
@@ -132,7 +145,11 @@ bool PokemonTrainerEditor::setGame(const std::string& game) {
     } else if (g == "yellow" || g == "pokemonyellow" || g == "yellowversion") {
         gameType = GameType::GEN1_YELLOW;
         gameName = "Pokemon Yellow";
-        trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_YELLOW;
+        if (isJapanese) {
+            trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_YELLOW_J;
+        } else {
+            trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_YELLOW;
+        }
     } else if (g == "red" || g == "pokemonred" || g == "redversion" ||
                g == "blue" || g == "pokemonblue" || g == "blueversion" ||
                g == "green" || g == "pokemongreen" || g == "greenversion") {
@@ -146,7 +163,15 @@ bool PokemonTrainerEditor::setGame(const std::string& game) {
         } else {
             gameName = "Pokemon Red/Blue";
         }
-        trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_RB;
+        if (isJapanese) {
+            if (g.find("blue") != std::string::npos) {
+                trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_Blue_J;
+            } else {
+                trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_RG_J;
+            }
+        } else {
+            trainer1Addresses = Generation1Utils::TRAINER1_ADDRESSES_RB;
+        }
     } else if (g == "gold" || g == "pokemongold" || g == "goldversion" ||
                g == "silver" || g == "pokemonsilver" || g == "silverversion") {
         gameType = GameType::GEN2_GS;
@@ -157,11 +182,19 @@ bool PokemonTrainerEditor::setGame(const std::string& game) {
         } else {
             gameName = "Pokemon Gold/Silver";
         }
-        trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_GS;
+        if (isJapanese) {
+            trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_GS_J;
+        } else {
+            trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_GS;
+        }
     } else if (g == "crystal" || g == "pokemoncrystal" || g == "crystalversion") {
         gameType = GameType::GEN2_CRYSTAL;
         gameName = "Pokemon Crystal";
-        trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_CRYSTAL;
+        if (isJapanese) {
+            trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_CRYSTAL_J;
+        } else {
+            trainer2Addresses = Generation2Utils::TRAINER2_ADDRESSES_CRYSTAL;
+        }
     } else {
         std::cerr << "Unsupported or unknown game: " << game << std::endl;
         return false;
@@ -210,7 +243,9 @@ bool PokemonTrainerEditor::parseGen1Trainers() {
         if (pos < end && static_cast<unsigned char>(fileBuffer[pos]) == 0x50) {
             pos++;
         }
-        std::string cls = decodeText(bytes, TextEncoding::EN_G1, 0x50);
+
+        TextEncoding enc = isJapanese ? TextEncoding::JP_G1 : TextEncoding::EN_G1;
+        std::string cls = decodeText(bytes, enc, 0x50);
         if (cls.empty()) {
             cls = std::string("Class ") + std::to_string(allClasses.size());
         }
@@ -347,7 +382,9 @@ bool PokemonTrainerEditor::parseGen2Trainers() {
         if (pos < end && static_cast<unsigned char>(fileBuffer[pos]) == 0x50) {
             pos++;
         }
-        std::string cls = decodeText(bytes, TextEncoding::EN_G2, 0x50);
+        // Decode class names using English or Japanese Gen 2 encoding
+        TextEncoding classEnc = isJapanese ? TextEncoding::JP_G2 : TextEncoding::EN_G2;
+        std::string cls = decodeText(bytes, classEnc, 0x50);
         if (cls.empty()) {
             cls = std::string("Class ") + std::to_string(allClassNames.size());
         }
@@ -467,7 +504,8 @@ bool PokemonTrainerEditor::parseGen2Trainers() {
             }
             if (cur <= offset) break;
 
-            std::string trainerName = decodeText(nameBytes, TextEncoding::EN_G2, 0x50);
+            TextEncoding encName = isJapanese ? TextEncoding::JP_G2 : TextEncoding::EN_G2;
+            std::string trainerName = decodeText(nameBytes, encName, 0x50);
             if (trainerName.empty()) {
                 trainerName = std::string("Trainer ") + std::to_string(trainerIdx);
             }
@@ -962,7 +1000,15 @@ void PokemonTrainerEditor::render() {
     renderText(headerLabel, 10, 5, headerColor);
 
     if (searchMode) {
-        renderText("Search: " + searchTerm, 10, 5 + charHeight, colors.accent, font);
+        // When in search mode, display the search prompt. Use mixed text
+        // rendering when in Japanese mode so that multi-byte characters in
+        // the search term render correctly.
+        std::string searchLabel = "Search: " + searchTerm;
+        if (isJapanese && japaneseFont) {
+            renderMixedText(searchLabel, 10, 5 + charHeight, colors.accent);
+        } else {
+            renderText(searchLabel, 10, 5 + charHeight, colors.accent, font);
+        }
     } else {
         std::string sortLabel;
         switch (sortMode) {
@@ -970,7 +1016,12 @@ void PokemonTrainerEditor::render() {
             case SortMode::Class:  sortLabel = "Sorting: Class"; break;
             case SortMode::Name:   sortLabel = "Sorting: Name"; break;
         }
-        renderText(sortLabel + "   Press S to search, T to toggle sort, Enter to view details, Ctrl+S to save", 10, 5 + charHeight, colors.textDim, font);
+        std::string infoText = sortLabel + "   Press S to search, T to toggle sort, Enter to view details, Ctrl+S to save";
+        if (isJapanese && japaneseFont) {
+            renderMixedText(infoText, 10, 5 + charHeight, colors.textDim);
+        } else {
+            renderText(infoText, 10, 5 + charHeight, colors.textDim, font);
+        }
     }
 
     int listX = 0;
@@ -1006,14 +1057,19 @@ void PokemonTrainerEditor::render() {
                 break;
             }
         }
-        renderText(display, listX + 5, y + 2, colors.text, font);
+
+        if (isJapanese && japaneseFont) {
+            renderMixedText(display, listX + 5, y + 2, colors.text);
+        } else {
+            renderText(display, listX + 5, y + 2, colors.text, font);
+        }
     }
 
     {
         int sbX = listX + listWidth - scrollbar.width;
         int sbY = listY;
         int sbHeight = listHeight;
-        // visibleRows and totalItems have already been set above
+
         setScrollbarArea(sbX, sbY, sbHeight, &scrollbar);
         renderScrollbar();
         resetScrollbarArea();
@@ -1047,16 +1103,18 @@ void PokemonTrainerEditor::render() {
                 renderFilledRect({rightX, y - 2, rightWidth, charHeight + 4}, colors.selectedBg);
             }
             renderText(fd.label, rightX + 5, y, colors.accent, font);
-            renderText(getFieldValueString(tr, fd, fi), rightX + 200, y, colors.text, font);
+            std::string valueStr = getFieldValueString(tr, fd, fi);
+            if (isJapanese && japaneseFont) {
+                renderMixedText(valueStr, rightX + 200, y, colors.text);
+            } else {
+                renderText(valueStr, rightX + 200, y, colors.text, font);
+            }
         }
 
-        // Configure and draw the details scrollbar via SDLAppBase.  It sits
-        // at the far right of the details pane.
+
         {
             int detailsY = listY;
             int detailsHeight = windowHeight - detailsY - 10;
-            // Recompute rightX and rightWidth based on current list and
-            // scrollbar dimensions
             int localListWidth = 300;
             int sbSpace = scrollbar.width;
             int localRightX = localListWidth + sbSpace + 10;
@@ -1106,8 +1164,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             }
         }
 
-        // Prepare geometry for scrollbars
-        // List scrollbar occupies the right edge of the list pane
         int listSbX = listX + listWidth - scrollbar.width;
         int listSbY = listY;
         int listSbHeight = listHeight;
@@ -1123,7 +1179,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         bool consumed = false;
         setScrollbarArea(detailsSbX, detailsY, detailsHeight, &detailsScrollbar);
         if (handleScrollbarClick(mx, my)) {
-            // Update the cached scroll offset immediately
             detailsScrollOffset = detailsScrollbar.offset;
             consumed = true;
         }
@@ -1143,7 +1198,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
     // Mouse button release: end any scrollbar dragging
     // ---------------------------------------------------------------------
     if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-        // Compute geometry for list and details scrollbars
         int headerHeight = charHeight * 2 + 10;
         int listY = headerHeight + 10;
         int listWidth = 300;
@@ -1217,7 +1271,7 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
 
         // Compute geometry for list and details regions
         int headerHeight = charHeight * 2 + 10;
-        int listX = 0;
+        //int listX = 0;
         int listY = headerHeight + 10;
         int listWidth = 300;
         int listHeight = windowHeight - listY - 10;
@@ -1227,7 +1281,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         int detailsY = listY;
         int detailsHeight = windowHeight - detailsY - 10;
 
-        // Determine if the cursor is within the details pane
         bool inDetails = (mx >= rightX && mx < rightX + rightWidth &&
                           my >= detailsY && my < detailsY + detailsHeight);
 
@@ -1236,13 +1289,11 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             float scrollAmount = -static_cast<float>(wheelY) * 0.2f;
 
             if (inDetails) {
-                // Scroll the details pane via momentum
                 int detailsSbX = rightX + rightWidth - detailsScrollbar.width;
                 setScrollbarArea(detailsSbX, detailsY, detailsHeight, &detailsScrollbar);
                 addScrollVelocity(scrollAmount);
                 resetScrollbarArea();
             } else {
-                // Scroll the list pane via momentum
                 int listSbX = listWidth - scrollbar.width;
                 int listSbY = listY;
                 int listSbHeight = listHeight;
@@ -1257,7 +1308,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         SDL_Keycode key = event.key.key;
         SDL_Keymod mod = event.key.mod;
 
-        // If we are currently editing a value, handle input for the edit buffer
         if (editingValue) {
             // Cancel editing with ESCAPE
             if (key == SDLK_ESCAPE) {

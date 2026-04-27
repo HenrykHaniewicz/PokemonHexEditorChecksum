@@ -67,6 +67,23 @@ static constexpr TrainerMemoryAddresses TRAINER2_ADDRESSES_CRYSTAL{
     0x03BA66  // lastTrainerByte
 };
 
+// JP GS is only 1 MB instead of 2.
+static constexpr TrainerMemoryAddresses TRAINER2_ADDRESSES_GS_J{
+    0x02D2D6, // classNamesStart
+    0x02D4B4, // classNamesEnd
+    0x03995C, // pointerStart
+    0x0399DF, // pointerEnd (last pointer begins at 0x0399DE)
+    0x03B35C  // lastTrainerByte
+};
+
+static constexpr TrainerMemoryAddresses TRAINER2_ADDRESSES_CRYSTAL_J{
+    0x02D319, // classNamesStart
+    0x02D4FF, // classNamesEnd
+    0x0399BA, // pointerStart
+    0x039A3F, // pointerEnd (last pointer begins at 0x039A3E)
+    0x03B6FF  // lastTrainerByte (first byte = 0x39A40)
+};
+
 } // namespace Generation2Utils
 
 #endif // GENERATION2_UTILS_H

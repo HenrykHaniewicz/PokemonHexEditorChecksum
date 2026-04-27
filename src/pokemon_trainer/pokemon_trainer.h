@@ -128,6 +128,9 @@ private:
     std::vector<std::string> gen1ClassNames;
     std::vector<std::string> gen2ClassNames;
 
+    bool isJapanese{false};
+
+
     enum class FieldKind {
         Name,
         Class,
@@ -186,6 +189,7 @@ public:
     PokemonTrainerEditor();
     bool loadFile(const char* filename);
     bool setGame(const std::string& game);
+    void setJapanese(bool jp) { isJapanese = jp; }
     void setOverwriteMode(bool b) { overwriteMode = b; }
 };
 
