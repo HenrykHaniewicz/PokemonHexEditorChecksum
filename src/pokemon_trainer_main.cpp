@@ -16,14 +16,14 @@ static void printUsage(const char* progName) {
     std::cerr << std::endl;
     std::cerr << "Options:" << std::endl;
     std::cerr << "  -o          Overwrite the input ROM instead of writing to edited_files/" << std::endl;
-    std::cerr << "  -j          Use Japanese trainer offsets (Gen 1/2 only; unsupported for Gen 3)" << std::endl;
+    std::cerr << "  -j          Use Japanese trainer data offsets" << std::endl;
     std::cerr << std::endl;
     std::cerr << "Interactive controls:" << std::endl;
     std::cerr << "  Up/Down        Navigate the trainer list or fields" << std::endl;
     std::cerr << "  Enter          Toggle detail view" << std::endl;
     std::cerr << "  T              Toggle sort between class and name" << std::endl;
     std::cerr << "  S              Activate search; type letters and press Enter to accept" << std::endl;
-    std::cerr << "  Ctrl+S         Save edits" << std::endl;
+    std::cerr << "  Cmd/Ctrl+S     Save edits" << std::endl;
     std::cerr << "  Esc            Exit detail view or quit the program" << std::endl;
 }
 
@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
         }
     }
     PokemonTrainerEditor editor;
-    // Configure regional settings on the editor before loading any game data
+
     editor.setJapanese(japanese);
     editor.setOverwriteMode(overwrite);
     if (!editor.loadFile(filename)) {

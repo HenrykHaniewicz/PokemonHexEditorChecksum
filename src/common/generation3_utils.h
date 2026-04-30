@@ -11,8 +11,11 @@
 namespace Generation3Utils {
 
 // Structure holding the three key addresses used by the trainer editor:
-//  - classNames:   start of the trainer class name table (13‑byte records)
-//  - trainerDataStart: start of the trainer data table (0x28‑byte records)
+//  - classNames:       start of the trainer class name table (13‑byte records)
+//  - trainerDataStart: start of the trainer data table.  Each record in this
+//    table is 0x28 bytes in the English games and 0x20 bytes in the Japanese
+//    releases (the difference arises from a shorter name field and smaller
+//    padding).  Parsing code must account for this.
 //  - trainerDataEnd:   end of the trainer data table (one byte past the end)
 struct TrainerMemoryAddresses {
     uint32_t classNames;
@@ -20,10 +23,7 @@ struct TrainerMemoryAddresses {
     uint32_t trainerDataEnd;
 };
 
-// Offsets for each Generation 3 game.  These values are based on disassembly
-// and community documentation for the English language ROMs.  If you wish to
-// support additional revisions or languages you may need to supply the
-// appropriate addresses here as well.
+// Offsets for each Generation 3 game.
 static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_RUBY{
     0x1F0220, // classNames
     0x1F053C, // trainerDataStart
@@ -33,57 +33,57 @@ static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_RUBY{
 static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_SAPPHIRE{
     0x1F01B0, // classNames
     0x1F04CC, // trainerDataStart
-    0x1F7113  // trainerDataEnd
+    0x1F7114  // trainerDataEnd
 };
 
 static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_EMERALD{
     0x30FCD4, // classNames
     0x310058, // trainerDataStart
-    0x3185C7  // trainerDataEnd
+    0x3185C8  // trainerDataEnd
 };
 
 static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_FIRERED{
     0x23E558, // classNames
     0x23EAF0, // trainerDataStart
-    0x245EDF  // trainerDataEnd
+    0x245EE0  // trainerDataEnd
 };
 
 static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_LEAFGREEN{
     0x23E5A4, // classNames
     0x23EB3C, // trainerDataStart
-    0x245F2B  // trainerDataEnd
+    0x245F2C  // trainerDataEnd
 };
 
 
-// static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_RUBY_J{
-//     0x1F0220, // classNames
-//     0x1F053C, // trainerDataStart
-//     0x1F7184  // trainerDataEnd
-// };
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_RUBY_J{
+    0x1C4A14, // classNames
+    0x1C4CB4, // trainerDataStart
+    0x1CA354  // trainerDataEnd
+};
 
-// static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_SAPPHIRE_J{
-//     0x1F01B0, // classNames
-//     0x1F04CC, // trainerDataStart
-//     0x1F7113  // trainerDataEnd
-// };
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_SAPPHIRE_J{
+    0x1C49A4, // classNames
+    0x1C4C44, // trainerDataStart
+    0x1CA2E4  // trainerDataEnd
+};
 
-// static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_EMERALD_J{
-//     0x30FCD4, // classNames
-//     0x310058, // trainerDataStart
-//     0x3185C7  // trainerDataEnd
-// };
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_EMERALD_J{
+    0x2E3564, // classNames
+    0x2E385C, // trainerDataStart
+    0x2EA31C  // trainerDataEnd
+};
 
-// static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_FIRERED_J{
-//     0x23E558, // classNames
-//     0x23EAF0, // trainerDataStart
-//     0x245EDF  // trainerDataEnd
-// };
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_FIRERED_J{
+    0x1F9354, // classNames
+    0x1F9810, // trainerDataStart
+    0x1FF4D0  // trainerDataEnd
+};
 
-// static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_LEAFGREEN_J{
-//     0x23E5A4, // classNames (corrected)
-//     0x23EB3C, // trainerDataStart
-//     0x245F2B  // trainerDataEnd
-// };
+static constexpr TrainerMemoryAddresses TRAINER_ADDRESSES_LEAFGREEN_J{
+    0x1FDB18, // classNames
+    0x1FDFD4, // trainerDataStart
+    0x203C94  // trainerDataEnd
+};
 
 // Gen 3 save structure constants
 static constexpr size_t GEN3_SAVE_SIZE = 0x20000;        // 128KB save file
@@ -118,6 +118,8 @@ constexpr size_t GEN3_SECTION_SIZES[14] = {
 constexpr int GEN3_GAME_RS = 0;      // Ruby/Sapphire
 constexpr int GEN3_GAME_EMERALD = 1;
 constexpr int GEN3_GAME_FRLG = 2;    // FireRed/LeafGreen
+
+constexpr uint32_t GEN3_ROM_ABSOLUTE_ADDRESS = 0x08000000;
 
 // Security key offsets within Section 0
 constexpr size_t GEN3_SECURITY_KEY_OFFSET_E = 0x00AC;     // Emerald

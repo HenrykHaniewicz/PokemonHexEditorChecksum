@@ -28,7 +28,8 @@ PokemonTrainerEditor::PokemonTrainerEditor()
 }
 
 std::string PokemonTrainerEditor::decodeTrainerName(const std::vector<unsigned char>& bytes) const {
-    return decodeText(bytes, TextEncoding::EN_G3, 0xFF);
+    TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
+    return decodeText(bytes, enc, 0xFF);
 }
 
 bool PokemonTrainerEditor::isGen1Game() const {
@@ -64,16 +65,18 @@ std::string PokemonTrainerEditor::getTrainerClassName(uint8_t classId) const {
     }
     if (isGen3Game()) {
         const size_t baseOffset = static_cast<size_t>(trainer3Addresses.classNames);
-        size_t offset = baseOffset + (static_cast<size_t>(classId) * 13);
-        if (offset + 13 > fileBuffer.size()) {
+        size_t maxNameLength = isJapanese ? 11 : 13;
+        size_t offset = baseOffset + (static_cast<size_t>(classId) * maxNameLength);
+        if (offset + maxNameLength > fileBuffer.size()) {
             return std::string("Class ") + std::to_string(classId);
         }
         std::vector<unsigned char> bytes;
-        bytes.reserve(13);
-        for (size_t i = 0; i < 13; i++) {
+        bytes.reserve(maxNameLength);
+        for (size_t i = 0; i < maxNameLength; i++) {
             bytes.push_back(static_cast<unsigned char>(fileBuffer[offset + i]));
         }
-        std::string decoded = decodeText(bytes, TextEncoding::EN_G3, 0xFF);
+        TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
+        std::string decoded = decodeText(bytes, enc, 0xFF);
         if (decoded.empty()) {
             decoded = std::string("Class ") + std::to_string(classId);
         }
@@ -109,39 +112,47 @@ bool PokemonTrainerEditor::setGame(const std::string& game) {
 
     gameType = GameType::UNKNOWN;
     gameName.clear();
-    {
-        std::string lower = g;
-        // Already lowercased and whitespace removed above
-        if (isJapanese) {
-            if (lower == "ruby" || lower == "pokemonruby" || lower == "rubyversion" ||
-                lower == "sapphire" || lower == "pokemonsapphire" || lower == "sapphireversion" ||
-                lower == "emerald" || lower == "firered" || lower == "fireredversion" ||
-                lower == "leafgreen" || lower == "leafgreenversion") {
-                std::cerr << "Japanese games are not supported for Gen 3 in pokemon_trainer." << std::endl;
-                return false;
-            }
-        }
-    }
+
     if (g == "ruby" || g == "pokemonruby" || g == "rubyversion") {
         gameType = GameType::GEN3_RS;
         gameName = "Pokemon Ruby";
-        trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_RUBY;
+        if (isJapanese) {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_RUBY_J;
+        } else {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_RUBY;
+        }
     } else if (g == "sapphire" || g == "pokemonsapphire" || g == "sapphireversion") {
         gameType = GameType::GEN3_RS;
         gameName = "Pokemon Sapphire";
-        trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_SAPPHIRE;
+        if (isJapanese) {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_SAPPHIRE_J;
+        } else {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_SAPPHIRE;
+        }
     } else if (g == "emerald") {
         gameType = GameType::GEN3_EMERALD;
         gameName = "Pokemon Emerald";
-        trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_EMERALD;
+        if (isJapanese) {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_EMERALD_J;
+        } else {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_EMERALD;
+        }
     } else if (g == "firered" || g == "fireredversion") {
         gameType = GameType::GEN3_FRLG;
         gameName = "Pokemon FireRed";
-        trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_FIRERED;
+        if (isJapanese) {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_FIRERED_J;
+        } else {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_FIRERED;
+        }
     } else if (g == "leafgreen" || g == "leafgreenversion") {
         gameType = GameType::GEN3_FRLG;
         gameName = "Pokemon LeafGreen";
-        trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_LEAFGREEN;
+        if (isJapanese) {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_LEAFGREEN_J;
+        } else {
+            trainer3Addresses = Generation3Utils::TRAINER_ADDRESSES_LEAFGREEN;
+        }
     } else if (g == "yellow" || g == "pokemonyellow" || g == "yellowversion") {
         gameType = GameType::GEN1_YELLOW;
         gameName = "Pokemon Yellow";
@@ -530,7 +541,7 @@ bool PokemonTrainerEditor::parseGen2Trainers() {
 bool PokemonTrainerEditor::parseGen3Trainers() {
     const size_t baseOffset = static_cast<size_t>(trainer3Addresses.trainerDataStart);
     const size_t tableEndOffset = static_cast<size_t>(trainer3Addresses.trainerDataEnd);
-    const size_t recordSize = 0x28;
+    const size_t recordSize = isJapanese ? 0x20 : 0x28;
     size_t offset = baseOffset;
     size_t recordCount = 0;
     static const size_t maxRecords = 2000;
@@ -544,24 +555,39 @@ bool PokemonTrainerEditor::parseGen3Trainers() {
         entry.gen3.flags = DataUtils::readU8(fileBuffer, offset + 0x02);
         entry.gen3.sprite = DataUtils::readU8(fileBuffer, offset + 0x03);
 
+        const size_t nameLen = isJapanese ? 6 : 12;
+        const size_t nameStart = 0x04;
+        const size_t itemsOffset = isJapanese ? 0x0A : 0x10;
+        const size_t unknownOffset = isJapanese ? 0x12 : 0x18;
+        const size_t unknownCount = isJapanese ? 2 : 4;
+        const size_t aiOffset = isJapanese ? 0x14 : 0x1C;
+        const size_t partySizeOffset = isJapanese ? 0x18 : 0x20;
+        const size_t pointerOffset = isJapanese ? 0x1C : 0x24;
+
         std::vector<unsigned char> nameBytes;
-        nameBytes.reserve(12);
-        for (size_t i = 0; i < 12 && offset + 0x04 + i < fileBuffer.size(); i++) {
-            nameBytes.push_back(static_cast<unsigned char>(fileBuffer[offset + 0x04 + i]));
+        nameBytes.reserve(nameLen);
+        for (size_t i = 0; i < nameLen && offset + nameStart + i < fileBuffer.size(); i++) {
+            nameBytes.push_back(static_cast<unsigned char>(fileBuffer[offset + nameStart + i]));
         }
         entry.name = decodeTrainerName(nameBytes);
 
         for (size_t i = 0; i < 4; i++) {
-            entry.gen3.items[i] = DataUtils::readU16LE(fileBuffer, offset + 0x10 + (i * 2));
+            entry.gen3.items[i] = DataUtils::readU16LE(fileBuffer, offset + itemsOffset + (i * 2));
         }
+
         for (size_t i = 0; i < 4; i++) {
-            entry.gen3.unknown[i] = DataUtils::readU8(fileBuffer, offset + 0x18 + i);
+            if (i < unknownCount) {
+                entry.gen3.unknown[i] = DataUtils::readU8(fileBuffer, offset + unknownOffset + i);
+            } else {
+                entry.gen3.unknown[i] = 0;
+            }
         }
-        entry.gen3.ai = DataUtils::readU32LE(fileBuffer, offset + 0x1C);
-        entry.partySize = DataUtils::readU32LE(fileBuffer, offset + 0x20);
-        entry.gen3.partyPointer = DataUtils::readU32LE(fileBuffer, offset + 0x24);
-        if (entry.gen3.partyPointer >= 0x08000000) {
-            uint32_t romOffset = entry.gen3.partyPointer - 0x08000000;
+
+        entry.gen3.ai = DataUtils::readU32LE(fileBuffer, offset + aiOffset);
+        entry.partySize = DataUtils::readU32LE(fileBuffer, offset + partySizeOffset);
+        entry.gen3.partyPointer = DataUtils::readU32LE(fileBuffer, offset + pointerOffset);
+        if (entry.gen3.partyPointer >= Generation3Utils::GEN3_ROM_ABSOLUTE_ADDRESS) {
+            uint32_t romOffset = entry.gen3.partyPointer - Generation3Utils::GEN3_ROM_ABSOLUTE_ADDRESS;
             entry.gen3.partyOffset = (romOffset < fileBuffer.size()) ? romOffset : 0;
         } else {
             entry.gen3.partyOffset = 0;
@@ -648,7 +674,7 @@ void PokemonTrainerEditor::allocateNewParty(TrainerEntry& entry, uint32_t newPar
     std::vector<std::pair<size_t,size_t>> used;
     used.reserve(trainers.size());
     for (const auto& tr : trainers) {
-        if (tr.gen3.partyPointer == 0 || tr.gen3.partyPointer < 0x08000000) continue;
+        if (tr.gen3.partyPointer == 0 || tr.gen3.partyPointer < Generation3Utils::GEN3_ROM_ABSOLUTE_ADDRESS) continue;
         size_t start = tr.gen3.partyOffset;
         size_t size = static_cast<size_t>(tr.partySize) * ((tr.type == 0 || tr.type == 2) ? 8 : 16);
         used.push_back({start, start + size});
@@ -685,9 +711,11 @@ void PokemonTrainerEditor::allocateNewParty(TrainerEntry& entry, uint32_t newPar
         memset(&fileBuffer[candidate + copyBytes], 0, newSize - copyBytes);
     }
 
-    uint32_t newPointer = static_cast<uint32_t>(candidate + 0x08000000);
-    DataUtils::writeU32LE(fileBuffer, entry.offset + 0x24, newPointer);
-    DataUtils::writeU32LE(fileBuffer, entry.offset + 0x20, newPartySize);
+    uint32_t newPointer = static_cast<uint32_t>(candidate + Generation3Utils::GEN3_ROM_ABSOLUTE_ADDRESS);
+    size_t pointerOffset = isJapanese ? 0x1C : 0x24;
+    size_t sizeOffset    = isJapanese ? 0x18 : 0x20;
+    DataUtils::writeU32LE(fileBuffer, entry.offset + pointerOffset, newPointer);
+    DataUtils::writeU32LE(fileBuffer, entry.offset + sizeOffset, newPartySize);
     entry.gen3.partyPointer = newPointer;
     entry.gen3.partyOffset = candidate;
     entry.partySize = newPartySize;
@@ -1000,9 +1028,6 @@ void PokemonTrainerEditor::render() {
     renderText(headerLabel, 10, 5, headerColor);
 
     if (searchMode) {
-        // When in search mode, display the search prompt. Use mixed text
-        // rendering when in Japanese mode so that multi-byte characters in
-        // the search term render correctly.
         std::string searchLabel = "Search: " + searchTerm;
         if (isJapanese && japaneseFont) {
             renderMixedText(searchLabel, 10, 5 + charHeight, colors.accent);
@@ -1325,15 +1350,19 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                     try {
                         switch (fd.kind) {
                             case FieldKind::Name: {
+                                // Trim whitespace from the new name
                                 std::string newName = editBuffer;
                                 if (!newName.empty()) {
                                     newName.erase(newName.find_last_not_of(' ') + 1);
                                     newName.erase(0, newName.find_first_not_of(' '));
                                 }
-                                std::vector<unsigned char> encoded = encodeText(newName, TextEncoding::EN_G3, 12, 0xFF);
-                                for (size_t i = 0; i < 12 && i < encoded.size(); i++) {
+                                TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
+                                size_t nameLen = isJapanese ? 6 : 12;
+                                std::vector<unsigned char> encoded = encodeText(newName, enc, nameLen, 0xFF);
+                                for (size_t i = 0; i < nameLen && i < encoded.size(); i++) {
                                     DataUtils::writeU8(fileBuffer, tr.offset + 0x04 + i, encoded[i]);
                                 }
+                                // Update the in‑memory name string and refresh the display order
                                 tr.name = decodeTrainerName(encoded);
                                 hasUnsavedChanges = true;
                                 refreshDisplayOrder();
@@ -1425,7 +1454,8 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                                     uint32_t newVal = static_cast<uint32_t>(value);
                                     if (tr.gen3.ai != newVal) {
                                         tr.gen3.ai = newVal;
-                                        DataUtils::writeU32LE(fileBuffer, tr.offset + 0x1C, newVal);
+                                        size_t aiOffset = isJapanese ? 0x14 : 0x1C;
+                                        DataUtils::writeU32LE(fileBuffer, tr.offset + aiOffset, newVal);
                                         hasUnsavedChanges = true;
                                     }
                                 }
@@ -1439,7 +1469,8 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                                     size_t slot = fd.subIndex;
                                     if (slot < tr.gen3.items.size() && tr.gen3.items[slot] != newItem) {
                                         tr.gen3.items[slot] = newItem;
-                                        DataUtils::writeU16LE(fileBuffer, tr.offset + 0x10 + slot * 2, newItem);
+                                        size_t itemsOffset = isJapanese ? 0x0A : 0x10;
+                                        DataUtils::writeU16LE(fileBuffer, tr.offset + itemsOffset + slot * 2, newItem);
                                         hasUnsavedChanges = true;
                                     }
                                 }
