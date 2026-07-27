@@ -1,5 +1,5 @@
 //=============================================================================
-//  pokemon_trainer.cpp
+//  pokemon_trainer.cpp - Refactored with helper functions
 //=============================================================================
 
 #include "pokemon_trainer.h"
@@ -23,7 +23,6 @@
 
 PokemonTrainerEditor::PokemonTrainerEditor()
     : SDLAppBase("Pokemon Trainer Editor", 1200, 640) {
-
     scrollbar.headerOffset = 60;
 }
 
@@ -323,7 +322,6 @@ bool PokemonTrainerEditor::parseGen1Trainers() {
                 cur++;
             }
             std::vector<Gen1PokemonInfo> party;
-            // Format 1: first byte is level, then species list until 0x00
             if (!format2) {
                 size_t levelOffset = offset;
                 size_t speciesPtr = offset + 1;
@@ -334,10 +332,8 @@ bool PokemonTrainerEditor::parseGen1Trainers() {
                     party.push_back(info);
                     speciesPtr++;
                 }
-                // Skip the 0x00 terminator
                 cur = speciesPtr + 1;
             } else {
-                // Format 2: level/species pairs until 0x00
                 size_t ptr = offset + 1;
                 while (ptr + 1 <= endAddr && static_cast<unsigned char>(fileBuffer[ptr]) != 0x00) {
                     Gen1PokemonInfo info;
@@ -346,7 +342,6 @@ bool PokemonTrainerEditor::parseGen1Trainers() {
                     party.push_back(info);
                     ptr += 2;
                 }
-                // Skip the 0x00 terminator
                 cur = ptr + 1;
             }
             if (cur > endAddr + 1) {
@@ -354,7 +349,6 @@ bool PokemonTrainerEditor::parseGen1Trainers() {
             }
             TrainerEntry entry;
             entry.offset = offset;
-            // Use 0 for Format 1 and 1 for Format 2 for consistency
             entry.type = static_cast<uint8_t>(format2 ? 1 : 0);
             entry.classId = static_cast<uint8_t>(ci);
             entry.name.clear();
@@ -393,7 +387,6 @@ bool PokemonTrainerEditor::parseGen2Trainers() {
         if (pos < end && static_cast<unsigned char>(fileBuffer[pos]) == 0x50) {
             pos++;
         }
-        // Decode class names using English or Japanese Gen 2 encoding
         TextEncoding classEnc = isJapanese ? TextEncoding::JP_G2 : TextEncoding::EN_G2;
         std::string cls = decodeText(bytes, classEnc, 0x50);
         if (cls.empty()) {
@@ -752,6 +745,8 @@ bool PokemonTrainerEditor::writeFile(const std::string& path) {
     out.write(fileBuffer.data(), static_cast<std::streamsize>(fileBuffer.size()));
     out.close();
     hasUnsavedChanges = false;
+    setConfirmOnQuit(false);  // Clear the quit confirmation flag when saved
+    requestRedraw();  // Request immediate redraw to update [MODIFIED] indicator
     std::cout << "File saved to " << path << std::endl;
     return true;
 }
@@ -1041,7 +1036,7 @@ void PokemonTrainerEditor::render() {
             case SortMode::Class:  sortLabel = "Sorting: Class"; break;
             case SortMode::Name:   sortLabel = "Sorting: Name"; break;
         }
-        std::string infoText = sortLabel + "   Press S to search, T to toggle sort, Enter to view details, Ctrl+S to save";
+        std::string infoText = sortLabel + "   Press S to search, T to toggle sort, Enter to view details, I to edit by name, Ctrl+S to save";
         if (isJapanese && japaneseFont) {
             renderMixedText(infoText, 10, 5 + charHeight, colors.textDim);
         } else {
@@ -1136,7 +1131,6 @@ void PokemonTrainerEditor::render() {
             }
         }
 
-
         {
             int detailsY = listY;
             int detailsHeight = windowHeight - detailsY - 10;
@@ -1155,6 +1149,519 @@ void PokemonTrainerEditor::render() {
 }
 
 //=============================================================================
+//  Editing helper methods - refactored for clarity
+//=============================================================================
+
+void PokemonTrainerEditor::startEditing(bool byName) {
+    editingValue = true;
+    editingByName = byName;
+    editBuffer.clear();
+    requestRedraw();
+}
+
+void PokemonTrainerEditor::cancelEditing() {
+    editingValue = false;
+    editingByName = false;
+    editBuffer.clear();
+    requestRedraw();
+}
+
+bool PokemonTrainerEditor::tryLookupByName(const TrainerEntry& tr, const FieldDescriptor& fd, std::string& result) {
+    if (!editingByName || editBuffer.empty()) {
+        return false;
+    }
+    
+    std::string upperBuffer = editBuffer;
+    std::transform(upperBuffer.begin(), upperBuffer.end(), upperBuffer.begin(), ::toupper);
+    
+    if (isGen3Game() && fd.kind == FieldKind::Class) {
+        size_t maxNameLength = isJapanese ? 11 : 13;
+        size_t baseOffset = static_cast<size_t>(trainer3Addresses.classNames);
+        size_t maxClasses = 100;
+        
+        for (size_t i = 0; i < maxClasses; i++) {
+            size_t offset = baseOffset + (i * maxNameLength);
+            if (offset + maxNameLength > fileBuffer.size()) break;
+            
+            std::vector<unsigned char> bytes;
+            for (size_t j = 0; j < maxNameLength; j++) {
+                bytes.push_back(static_cast<unsigned char>(fileBuffer[offset + j]));
+            }
+            TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
+            std::string className = decodeText(bytes, enc, 0xFF);
+            
+            std::string upperClass = className;
+            std::transform(upperClass.begin(), upperClass.end(), upperClass.begin(), ::toupper);
+            
+            if (upperClass == upperBuffer) {
+                result = HexUtils::toHexString(i, 2);
+                return true;
+            }
+        }
+    } else if (fd.kind == FieldKind::PokemonSpecies) {
+        if (isGen1Game()) {
+            for (const auto& kv : PokemonIndex::GEN1_POKEMON) {
+                const char* pokeName = kv.second.name;
+                if (pokeName && pokeName[0] != '\0') {
+                    std::string upperName = pokeName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer) {
+                        result = HexUtils::toHexString(kv.first, 2);
+                        return true;
+                    }
+                }
+            }
+        } else if (isGen2Game()) {
+            for (const auto& kv : PokemonIndex::GEN3_POKEMON) {
+                const char* pokeName = kv.second.name;
+                if (pokeName && pokeName[0] != '\0') {
+                    std::string upperName = pokeName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer) {
+                        result = HexUtils::toHexString(static_cast<size_t>(kv.first), 2);
+                        return true;
+                    }
+                }
+            }
+        } else if (isGen3Game()) {
+            for (const auto& kv : PokemonIndex::GEN3_POKEMON) {
+                const char* pokeName = kv.second.name;
+                if (pokeName && pokeName[0] != '\0') {
+                    std::string upperName = pokeName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer) {
+                        result = HexUtils::toHexString(kv.first, 4);
+                        return true;
+                    }
+                }
+            }
+        }
+    } else if (fd.kind == FieldKind::TrainerItem || fd.kind == FieldKind::PokemonItem) {
+        if (isGen2Game()) {
+            bool isCrystal = (gameType == GameType::GEN2_CRYSTAL);
+            for (const auto& kv : ItemsIndex::GEN2_ITEMS) {
+                const char* itemName = ItemsIndex::getGen2ItemName(kv.first, isCrystal);
+                if (itemName && itemName[0] != '\0') {
+                    std::string upperName = itemName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer || upperBuffer == "NONE") {
+                        result = (upperBuffer == "NONE") ? "00" : HexUtils::toHexString(kv.first, 2);
+                        return true;
+                    }
+                }
+            }
+        } else if (isGen3Game()) {
+            for (const auto& kv : ItemsIndex::GEN3_ITEMS) {
+                const char* itemName = ItemsIndex::getGen3ItemName(kv.first);
+                if (itemName && itemName[0] != '\0') {
+                    std::string upperName = itemName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer || upperBuffer == "NONE") {
+                        result = (upperBuffer == "NONE") ? "0000" : HexUtils::toHexString(kv.first, 4);
+                        return true;
+                    }
+                }
+            }
+        }
+    } else if (fd.kind == FieldKind::PokemonMove) {
+        if (isGen2Game()) {
+            for (const auto& kv : PokemonMoves::GEN2_MOVES) {
+                const char* moveName = kv.second;
+                if (moveName && moveName[0] != '\0') {
+                    std::string upperName = moveName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer || upperBuffer == "-" || upperBuffer == "--") {
+                        result = (upperBuffer == "-" || upperBuffer == "--") ? "00" : HexUtils::toHexString(kv.first, 2);
+                        return true;
+                    }
+                }
+            }
+        } else if (isGen3Game()) {
+            for (const auto& kv : PokemonMoves::GEN3_MOVES) {
+                const char* moveName = kv.second;
+                if (moveName && moveName[0] != '\0') {
+                    std::string upperName = moveName;
+                    std::transform(upperName.begin(), upperName.end(), upperName.begin(), ::toupper);
+                    if (upperName == upperBuffer || upperBuffer == "-" || upperBuffer == "--") {
+                        result = (upperBuffer == "-" || upperBuffer == "--") ? "0000" : HexUtils::toHexString(kv.first, 4);
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    
+    return false;
+}
+
+bool PokemonTrainerEditor::applyEdit(TrainerEntry& tr, const FieldDescriptor& fd, const std::string& value) {
+    if (value.empty()) return false;
+    
+    try {
+        switch (fd.kind) {
+            case FieldKind::Name: {
+                std::string newName = value;
+                if (!newName.empty()) {
+                    size_t end = newName.find_last_not_of(' ');
+                    if (end != std::string::npos) newName.erase(end + 1);
+                    size_t start = newName.find_first_not_of(' ');
+                    if (start != std::string::npos) newName.erase(0, start);
+                }
+                TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
+                size_t nameLen = isJapanese ? 6 : 12;
+                std::vector<unsigned char> encoded = encodeText(newName, enc, nameLen, 0xFF);
+                for (size_t i = 0; i < nameLen && i < encoded.size(); i++) {
+                    DataUtils::writeU8(fileBuffer, tr.offset + 0x04 + i, encoded[i]);
+                }
+                tr.name = decodeTrainerName(encoded);
+                refreshDisplayOrder();
+                return true;
+            }
+            case FieldKind::Class: {
+                if (isGen1Game()) return false;
+                unsigned long v = std::stoul(value, nullptr, 16);
+                if (v > 0xFFUL) v = 0xFFUL;
+                uint8_t newVal = static_cast<uint8_t>(v);
+                if (tr.classId != newVal) {
+                    tr.classId = newVal;
+                    DataUtils::writeU8(fileBuffer, tr.offset + 0x01, newVal);
+                    refreshDisplayOrder();
+                }
+                return true;
+            }
+            case FieldKind::Type: {
+                if (isGen1Game()) return false;
+                unsigned long v = std::stoul(value, nullptr, 16);
+                if (v > 3UL) v = 3UL;
+                uint8_t newType = static_cast<uint8_t>(v);
+                if (tr.type != newType) {
+                    tr.type = newType;
+                    allocateNewParty(tr, tr.partySize);
+                    DataUtils::writeU8(fileBuffer, tr.offset + 0x00, newType);
+                }
+                return true;
+            }
+            case FieldKind::PartySize: {
+                if (isGen1Game() || isGen2Game()) return false;
+                int v = std::stoi(value);
+                if (v < 1) v = 1;
+                if (v > 6) v = 6;
+                uint32_t newSize = static_cast<uint32_t>(v);
+                if (tr.partySize != newSize) {
+                    allocateNewParty(tr, newSize);
+                }
+                return true;
+            }
+            case FieldKind::Flags: {
+                unsigned long v = std::stoul(value, nullptr, 16);
+                if (v > 0xFFUL) v = 0xFFUL;
+                uint8_t newVal = static_cast<uint8_t>(v);
+                if (tr.gen3.flags != newVal) {
+                    tr.gen3.flags = newVal;
+                    DataUtils::writeU8(fileBuffer, tr.offset + 0x02, newVal);
+                }
+                return true;
+            }
+            case FieldKind::Sprite: {
+                unsigned long v = std::stoul(value, nullptr, 16);
+                if (v > 0xFFUL) v = 0xFFUL;
+                uint8_t newVal = static_cast<uint8_t>(v);
+                if (tr.gen3.sprite != newVal) {
+                    tr.gen3.sprite = newVal;
+                    DataUtils::writeU8(fileBuffer, tr.offset + 0x03, newVal);
+                }
+                return true;
+            }
+            case FieldKind::AI: {
+                unsigned long v = std::stoul(value, nullptr, 10);
+                if (v > 0xFFFFFFFFUL) v = 0xFFFFFFFFUL;
+                uint32_t newVal = static_cast<uint32_t>(v);
+                if (tr.gen3.ai != newVal) {
+                    tr.gen3.ai = newVal;
+                    size_t aiOffset = isJapanese ? 0x14 : 0x1C;
+                    DataUtils::writeU32LE(fileBuffer, tr.offset + aiOffset, newVal);
+                }
+                return true;
+            }
+            case FieldKind::TrainerItem: {
+                unsigned long v = std::stoul(value, nullptr, 16);
+                if (v > 0xFFFFUL) v = 0xFFFFUL;
+                uint16_t newItem = static_cast<uint16_t>(v);
+                size_t slot = fd.subIndex;
+                if (slot < tr.gen3.items.size() && tr.gen3.items[slot] != newItem) {
+                    tr.gen3.items[slot] = newItem;
+                    size_t itemsOffset = isJapanese ? 0x0A : 0x10;
+                    DataUtils::writeU16LE(fileBuffer, tr.offset + itemsOffset + slot * 2, newItem);
+                }
+                return true;
+            }
+            case FieldKind::PokemonLevel: {
+                int lv = std::stoi(value);
+                if (lv < 1) lv = 1;
+                if (lv > 255) lv = 255;
+                if (isGen1Game()) {
+                    size_t pi = fd.pokemonIndex;
+                    if (pi < tr.gen1.party.size()) {
+                        size_t off = tr.gen1.party[pi].levelOffset;
+                        if (off < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, off, static_cast<uint8_t>(lv));
+                        }
+                    }
+                } else if (isGen2Game()) {
+                    size_t pi = fd.pokemonIndex;
+                    if (pi < tr.gen2.party.size()) {
+                        size_t off = tr.gen2.party[pi].levelOffset;
+                        if (off < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, off, static_cast<uint8_t>(lv));
+                        }
+                    }
+                } else {
+                    if (tr.gen3.partyOffset != 0) {
+                        size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
+                        size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
+                        if (poff + 3 < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, poff + 0x02, static_cast<uint8_t>(lv));
+                        }
+                    }
+                }
+                return true;
+            }
+            case FieldKind::PokemonSpecies: {
+                if (isGen1Game()) {
+                    uint8_t newSpecies = static_cast<uint8_t>(std::stoul(value, nullptr, 16));
+                    size_t pi = fd.pokemonIndex;
+                    if (pi < tr.gen1.party.size()) {
+                        size_t off = tr.gen1.party[pi].speciesOffset;
+                        if (off < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, off, newSpecies);
+                        }
+                    }
+                } else if (isGen2Game()) {
+                    uint8_t newSpecies = static_cast<uint8_t>(std::stoul(value, nullptr, 16));
+                    size_t pi = fd.pokemonIndex;
+                    if (pi < tr.gen2.party.size()) {
+                        size_t off = tr.gen2.party[pi].speciesOffset;
+                        if (off < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, off, newSpecies);
+                        }
+                    }
+                } else {
+                    uint16_t newSpecies = static_cast<uint16_t>(std::stoul(value, nullptr, 16));
+                    if (tr.gen3.partyOffset != 0) {
+                        size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
+                        size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
+                        if (poff + 5 < fileBuffer.size()) {
+                            DataUtils::writeU16LE(fileBuffer, poff + 0x04, newSpecies);
+                        }
+                    }
+                }
+                return true;
+            }
+            case FieldKind::PokemonItem: {
+                if (isGen1Game()) return false;
+                if (isGen2Game()) {
+                    uint8_t newItem = static_cast<uint8_t>(std::stoul(value, nullptr, 16));
+                    size_t pi = fd.pokemonIndex;
+                    if (pi < tr.gen2.party.size()) {
+                        const auto& pinfo = tr.gen2.party[pi];
+                        if (pinfo.hasItem && pinfo.itemOffset < fileBuffer.size()) {
+                            DataUtils::writeU8(fileBuffer, pinfo.itemOffset, newItem);
+                        }
+                    }
+                } else {
+                    uint16_t newItem = static_cast<uint16_t>(std::stoul(value, nullptr, 16));
+                    if (tr.gen3.partyOffset != 0) {
+                        size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
+                        size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
+                        if (tr.type == 2 || tr.type == 3) {
+                            if (poff + 7 < fileBuffer.size()) {
+                                DataUtils::writeU16LE(fileBuffer, poff + 0x06, newItem);
+                            }
+                        } else {
+                            if (poff + 0x0F < fileBuffer.size()) {
+                                DataUtils::writeU16LE(fileBuffer, poff + 0x0E, newItem);
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            case FieldKind::PokemonMove: {
+                if (isGen1Game()) return false;
+                if (isGen2Game()) {
+                    uint8_t newMove = static_cast<uint8_t>(std::stoul(value, nullptr, 16));
+                    size_t pi = fd.pokemonIndex;
+                    size_t mj = fd.subIndex;
+                    if (pi < tr.gen2.party.size()) {
+                        const auto& pinfo = tr.gen2.party[pi];
+                        if (pinfo.hasMoves && mj < 4) {
+                            size_t moff = pinfo.moveOffsets[mj];
+                            if (moff < fileBuffer.size()) {
+                                DataUtils::writeU8(fileBuffer, moff, newMove);
+                            }
+                        }
+                    }
+                } else {
+                    uint16_t newMove = static_cast<uint16_t>(std::stoul(value, nullptr, 16));
+                    if (tr.gen3.partyOffset != 0) {
+                        size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
+                        size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
+                        if (tr.type == 3) {
+                            size_t moff = poff + 0x08 + fd.subIndex * 2;
+                            if (moff + 1 < fileBuffer.size()) {
+                                DataUtils::writeU16LE(fileBuffer, moff, newMove);
+                            }
+                        } else {
+                            size_t moff = poff + 0x06 + fd.subIndex * 2;
+                            if (moff + 1 < fileBuffer.size()) {
+                                DataUtils::writeU16LE(fileBuffer, moff, newMove);
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+            default:
+                return false;
+        }
+    } catch (...) {
+        return false;
+    }
+}
+
+void PokemonTrainerEditor::handleEditInput(SDL_Keycode key) {
+    if (!editingValue) return;
+    
+    // Cancel editing
+    if (key == SDLK_ESCAPE) {
+        cancelEditing();
+        return;
+    }
+    
+    // Commit edit
+    if (key == SDLK_RETURN || key == SDLK_RETURN2 || key == SDLK_KP_ENTER) {
+        if (!displayOrder.empty() && selectedField < fields.size()) {
+            size_t trainerIndex = displayOrder[selectedIndex];
+            TrainerEntry& tr = trainers[trainerIndex];
+            const FieldDescriptor& fd = fields[selectedField];
+            
+            std::string valueToApply = editBuffer;
+            
+            // If in name-based mode, try to lookup by name first
+            if (editingByName) {
+                std::string lookedUp;
+                if (tryLookupByName(tr, fd, lookedUp)) {
+                    valueToApply = lookedUp;
+                } else {
+                    // Name not found, swallow input
+                    cancelEditing();
+                    return;
+                }
+            }
+            
+            // Apply the edit
+            if (applyEdit(tr, fd, valueToApply)) {
+                hasUnsavedChanges = true;
+            }
+        }
+        cancelEditing();
+        return;
+    }
+    
+    // Handle backspace
+    if (key == SDLK_BACKSPACE) {
+        if (!editBuffer.empty()) {
+            editBuffer.pop_back();
+            requestRedraw();
+        }
+        return;
+    }
+    
+    // Handle text/hex input based on editing mode and field type
+    if (selectedField < fields.size()) {
+        const FieldDescriptor& fd = fields[selectedField];
+        
+        // Name field always uses text input
+        if (fd.kind == FieldKind::Name) {
+            char c = 0;
+            if (key >= SDLK_A && key <= SDLK_Z) {
+                c = static_cast<char>('A' + (key - SDLK_A));
+            } else if (key >= SDLK_0 && key <= SDLK_9) {
+                c = static_cast<char>('0' + (key - SDLK_0));
+            } else if (key == SDLK_SPACE) {
+                c = ' ';
+            } else if (key == SDLK_MINUS) {
+                c = '-';
+            } else if (key == SDLK_PERIOD) {
+                c = '.';
+            } else if (key == SDLK_APOSTROPHE) {
+                c = '\'';
+            }
+            if (c != 0 && editBuffer.length() < 11) {
+                editBuffer.push_back(c);
+                requestRedraw();
+            }
+            return;
+        }
+        
+        // Name-based editing mode (via 'I'): accept text input for lookups
+        if (editingByName) {
+            char c = 0;
+            if (key >= SDLK_A && key <= SDLK_Z) {
+                c = static_cast<char>('A' + (key - SDLK_A));
+            } else if (key >= SDLK_0 && key <= SDLK_9) {
+                c = static_cast<char>('0' + (key - SDLK_0));
+            } else if (key == SDLK_SPACE) {
+                c = ' ';
+            } else if (key == SDLK_MINUS) {
+                c = '-';
+            } else if (key == SDLK_PERIOD) {
+                c = '.';
+            }
+            if (c != 0 && editBuffer.length() < 30) {
+                editBuffer.push_back(c);
+                requestRedraw();
+            }
+            return;
+        }
+        
+        // Hex-based editing mode (via Enter): accept hex digits only
+        if (fd.kind == FieldKind::PartySize || fd.kind == FieldKind::PokemonLevel || fd.kind == FieldKind::AI) {
+            // Decimal numeric fields
+            if (key >= SDLK_0 && key <= SDLK_9) {
+                char c = static_cast<char>('0' + (key - SDLK_0));
+                size_t maxLen = 10;
+                if (fd.kind == FieldKind::PartySize) maxLen = 1;
+                else if (fd.kind == FieldKind::PokemonLevel) maxLen = 3;
+                if (editBuffer.length() < maxLen) {
+                    editBuffer.push_back(c);
+                    requestRedraw();
+                }
+            }
+        } else {
+            // Hex numeric fields (0-F only)
+            char c = 0;
+            if (key >= SDLK_0 && key <= SDLK_9) {
+                c = static_cast<char>('0' + (key - SDLK_0));
+            } else if (key >= SDLK_A && key <= SDLK_F) {
+                c = static_cast<char>('A' + (key - SDLK_A));
+            }
+            if (c != 0) {
+                size_t maxLen = 2;
+                if (fd.kind == FieldKind::TrainerItem || fd.kind == FieldKind::PokemonItem || 
+                    fd.kind == FieldKind::PokemonSpecies || fd.kind == FieldKind::PokemonMove) {
+                    maxLen = 4;
+                }
+                if (editBuffer.length() < maxLen) {
+                    editBuffer.push_back(static_cast<char>(std::toupper(c)));
+                    requestRedraw();
+                }
+            }
+        }
+    }
+}
+
+//=============================================================================
 //  Event handling
 //=============================================================================
 
@@ -1163,16 +1670,14 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         quit();
         return;
     }
-    // ---------------------------------------------------------------------
-    // Mouse button press: selection and scrollbar interactions
-    // ---------------------------------------------------------------------
+    
+    // Mouse events
     if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         int mx = event.button.x;
         int my = event.button.y;
         lastMouseX = mx;
         lastMouseY = my;
 
-        // Compute geometry for list and details panes
         int headerHeight = charHeight * 2 + 10;
         int listX = 0;
         int listY = headerHeight + 10;
@@ -1180,7 +1685,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         int listHeight = windowHeight - listY - 10;
         int rowHeight = charHeight + 4;
 
-        // Determine whether the click selects a trainer entry (only when not viewing details)
         if (!viewingDetails && mx < listWidth && my >= listY) {
             size_t index = scrollbar.offset + static_cast<size_t>((my - listY) / rowHeight);
             if (index < displayOrder.size()) {
@@ -1193,24 +1697,19 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         int listSbY = listY;
         int listSbHeight = listHeight;
 
-        // Details pane geometry
         int rightX = listWidth + scrollbar.width + 10;
         int rightWidth = windowWidth - rightX - 10;
         int detailsY = listY;
         int detailsHeight = windowHeight - detailsY - 10;
         int detailsSbX = rightX + rightWidth - detailsScrollbar.width;
 
-        // First attempt to handle click on the details scrollbar
-        bool consumed = false;
         setScrollbarArea(detailsSbX, detailsY, detailsHeight, &detailsScrollbar);
         if (handleScrollbarClick(mx, my)) {
             detailsScrollOffset = detailsScrollbar.offset;
-            consumed = true;
-        }
-        resetScrollbarArea();
-        if (consumed) {
+            resetScrollbarArea();
             return;
         }
+        resetScrollbarArea();
 
         setScrollbarArea(listSbX, listSbY, listSbHeight, &scrollbar);
         if (handleScrollbarClick(mx, my)) {
@@ -1219,9 +1718,7 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         }
         resetScrollbarArea();
     }
-    // ---------------------------------------------------------------------
-    // Mouse button release: end any scrollbar dragging
-    // ---------------------------------------------------------------------
+    
     if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
         int headerHeight = charHeight * 2 + 10;
         int listY = headerHeight + 10;
@@ -1237,30 +1734,24 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         int detailsHeight = windowHeight - detailsY - 10;
         int detailsSbX = rightX + rightWidth - detailsScrollbar.width;
 
-        // Release details scrollbar drag
         setScrollbarArea(detailsSbX, detailsY, detailsHeight, &detailsScrollbar);
         handleScrollbarRelease();
         resetScrollbarArea();
 
-        // Release list scrollbar drag
         setScrollbarArea(listSbX, listSbY, listSbHeight, &scrollbar);
         handleScrollbarRelease();
         resetScrollbarArea();
     }
-    // ---------------------------------------------------------------------
-    // Mouse movement: update drag actions for scrollbars
-    // ---------------------------------------------------------------------
+    
     if (event.type == SDL_EVENT_MOUSE_MOTION) {
         lastMouseX = event.motion.x;
         lastMouseY = event.motion.y;
 
-        // Compute geometry for scrollbars
         int headerHeight = charHeight * 2 + 10;
-        int listX = 0;
         int listY = headerHeight + 10;
         int listWidth = 300;
         int listHeight = windowHeight - listY - 10;
-        int listSbX = listX + listWidth - scrollbar.width;
+        int listSbX = listWidth - scrollbar.width;
         int listSbY = listY;
         int listSbHeight = listHeight;
 
@@ -1270,7 +1761,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
         int detailsHeight = windowHeight - detailsY - 10;
         int detailsSbX = rightX + rightWidth - detailsScrollbar.width;
 
-        // Drag the details scrollbar if it's currently being dragged
         if (detailsScrollbar.dragging) {
             setScrollbarArea(detailsSbX, detailsY, detailsHeight, &detailsScrollbar);
             handleScrollbarDrag(event.motion.y);
@@ -1279,7 +1769,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             requestRedraw();
         }
 
-        // Drag the list scrollbar if it's currently being dragged
         if (scrollbar.dragging) {
             setScrollbarArea(listSbX, listSbY, listSbHeight, &scrollbar);
             handleScrollbarDrag(event.motion.y);
@@ -1287,16 +1776,12 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             requestRedraw();
         }
     }
-    // ---------------------------------------------------------------------
-    // Mouse wheel: momentum scrolling for list or details panes
-    // ---------------------------------------------------------------------
+    
     if (event.type == SDL_EVENT_MOUSE_WHEEL) {
         int mx = lastMouseX;
         int my = lastMouseY;
 
-        // Compute geometry for list and details regions
         int headerHeight = charHeight * 2 + 10;
-        //int listX = 0;
         int listY = headerHeight + 10;
         int listWidth = 300;
         int listHeight = windowHeight - listY - 10;
@@ -1329,412 +1814,15 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             requestRedraw();
         }
     }
+    
+    // Keyboard events
     if (event.type == SDL_EVENT_KEY_DOWN) {
         SDL_Keycode key = event.key.key;
         SDL_Keymod mod = event.key.mod;
 
+        // Handle editing input
         if (editingValue) {
-            // Cancel editing with ESCAPE
-            if (key == SDLK_ESCAPE) {
-                editingValue = false;
-                editBuffer.clear();
-                requestRedraw();
-                return;
-            }
-            // Commit edit with Enter/Return
-            if (key == SDLK_RETURN || key == SDLK_RETURN2 || key == SDLK_KP_ENTER) {
-                if (!displayOrder.empty() && selectedField < fields.size()) {
-                    size_t trainerIndex = displayOrder[selectedIndex];
-                    TrainerEntry& tr = trainers[trainerIndex];
-                    const FieldDescriptor& fd = fields[selectedField];
-                    try {
-                        switch (fd.kind) {
-                            case FieldKind::Name: {
-                                // Trim whitespace from the new name
-                                std::string newName = editBuffer;
-                                if (!newName.empty()) {
-                                    newName.erase(newName.find_last_not_of(' ') + 1);
-                                    newName.erase(0, newName.find_first_not_of(' '));
-                                }
-                                TextEncoding enc = isJapanese ? TextEncoding::JP_G3 : TextEncoding::EN_G3;
-                                size_t nameLen = isJapanese ? 6 : 12;
-                                std::vector<unsigned char> encoded = encodeText(newName, enc, nameLen, 0xFF);
-                                for (size_t i = 0; i < nameLen && i < encoded.size(); i++) {
-                                    DataUtils::writeU8(fileBuffer, tr.offset + 0x04 + i, encoded[i]);
-                                }
-                                // Update the in‑memory name string and refresh the display order
-                                tr.name = decodeTrainerName(encoded);
-                                hasUnsavedChanges = true;
-                                refreshDisplayOrder();
-                                break;
-                            }
-                            case FieldKind::Class: {
-                                // In Gen 1 the trainer class is fixed and cannot be edited.
-                                if (isGen1Game()) {
-                                    break;
-                                }
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (value > 0xFFUL) value = 0xFFUL;
-                                    uint8_t newVal = static_cast<uint8_t>(value);
-                                    if (tr.classId != newVal) {
-                                        tr.classId = newVal;
-                                        DataUtils::writeU8(fileBuffer, tr.offset + 0x01, newVal);
-                                        hasUnsavedChanges = true;
-                                        refreshDisplayOrder();
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::Type: {
-                                // Gen 1 trainers do not have a configurable type field
-                                if (isGen1Game()) {
-                                    break;
-                                }
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (value > 3UL) value = 3UL;
-                                    uint8_t newType = static_cast<uint8_t>(value);
-                                    if (tr.type != newType) {
-                                        tr.type = newType;
-                                        allocateNewParty(tr, tr.partySize);
-                                        DataUtils::writeU8(fileBuffer, tr.offset + 0x00, newType);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::PartySize: {
-                                // Party size in Gen 1 and Gen 2 is implicit and cannot be changed
-                                if (isGen1Game() || isGen2Game()) {
-                                    break;
-                                }
-                                if (!editBuffer.empty()) {
-                                    int v = std::stoi(editBuffer);
-                                    if (v < 1) v = 1;
-                                    if (v > 6) v = 6;
-                                    uint32_t newSize = static_cast<uint32_t>(v);
-                                    if (tr.partySize != newSize) {
-                                        allocateNewParty(tr, newSize);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::Flags: {
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (value > 0xFFUL) value = 0xFFUL;
-                                    uint8_t newVal = static_cast<uint8_t>(value);
-                                    if (tr.gen3.flags != newVal) {
-                                        tr.gen3.flags = newVal;
-                                        DataUtils::writeU8(fileBuffer, tr.offset + 0x02, newVal);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::Sprite: {
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (value > 0xFFUL) value = 0xFFUL;
-                                    uint8_t newVal = static_cast<uint8_t>(value);
-                                    if (tr.gen3.sprite != newVal) {
-                                        tr.gen3.sprite = newVal;
-                                        DataUtils::writeU8(fileBuffer, tr.offset + 0x03, newVal);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::AI: {
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 10);
-                                    if (value > 0xFFFFFFFFUL) value = 0xFFFFFFFFUL;
-                                    uint32_t newVal = static_cast<uint32_t>(value);
-                                    if (tr.gen3.ai != newVal) {
-                                        tr.gen3.ai = newVal;
-                                        size_t aiOffset = isJapanese ? 0x14 : 0x1C;
-                                        DataUtils::writeU32LE(fileBuffer, tr.offset + aiOffset, newVal);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::TrainerItem: {
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (value > 0xFFFFUL) value = 0xFFFFUL;
-                                    uint16_t newItem = static_cast<uint16_t>(value);
-                                    size_t slot = fd.subIndex;
-                                    if (slot < tr.gen3.items.size() && tr.gen3.items[slot] != newItem) {
-                                        tr.gen3.items[slot] = newItem;
-                                        size_t itemsOffset = isJapanese ? 0x0A : 0x10;
-                                        DataUtils::writeU16LE(fileBuffer, tr.offset + itemsOffset + slot * 2, newItem);
-                                        hasUnsavedChanges = true;
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::PokemonLevel: {
-                                if (!editBuffer.empty()) {
-                                    int lv = std::stoi(editBuffer);
-                                    if (lv < 1) lv = 1;
-                                    if (lv > 255) lv = 255;
-                                    if (isGen1Game()) {
-                                        size_t pi = fd.pokemonIndex;
-                                        if (pi < tr.gen1.party.size()) {
-                                            size_t off = tr.gen1.party[pi].levelOffset;
-                                            if (off < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, off, static_cast<uint8_t>(lv));
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    } else if (gameType == GameType::GEN2_GS || gameType == GameType::GEN2_CRYSTAL) {
-                                        size_t pi = fd.pokemonIndex;
-                                        if (pi < tr.gen2.party.size()) {
-                                            size_t off = tr.gen2.party[pi].levelOffset;
-                                            if (off < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, off, static_cast<uint8_t>(lv));
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    } else {
-                                        // Generation 3 editing
-                                        if (tr.gen3.partyOffset != 0) {
-                                            size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
-                                            size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
-                                            if (poff + 3 < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, poff + 0x02, static_cast<uint8_t>(lv));
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::PokemonSpecies: {
-                                // Only process when a value is entered
-                                if (!editBuffer.empty()) {
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (isGen1Game()) {
-                                        if (value > 0xFFUL) value = 0xFFUL;
-                                        uint8_t newSpecies = static_cast<uint8_t>(value);
-                                        size_t pi = fd.pokemonIndex;
-                                        if (pi < tr.gen1.party.size()) {
-                                            size_t off = tr.gen1.party[pi].speciesOffset;
-                                            if (off < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, off, newSpecies);
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    } else if (gameType == GameType::GEN2_GS || gameType == GameType::GEN2_CRYSTAL) {
-                                        if (value > 0xFFUL) value = 0xFFUL;
-                                        uint8_t newSpecies = static_cast<uint8_t>(value);
-                                        size_t pi = fd.pokemonIndex;
-                                        if (pi < tr.gen2.party.size()) {
-                                            size_t off = tr.gen2.party[pi].speciesOffset;
-                                            if (off < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, off, newSpecies);
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    } else {
-                                        if (value > 0xFFFFUL) value = 0xFFFFUL;
-                                        uint16_t newSpecies = static_cast<uint16_t>(value);
-                                        if (tr.gen3.partyOffset != 0) {
-                                            size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
-                                            size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
-                                            if (poff + 5 < fileBuffer.size()) {
-                                                DataUtils::writeU16LE(fileBuffer, poff + 0x04, newSpecies);
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::PokemonItem: {
-                                // Only update when a value is entered
-                                if (!editBuffer.empty()) {
-                                    if (isGen1Game()) {
-                                        break;
-                                    }
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (gameType == GameType::GEN2_GS || gameType == GameType::GEN2_CRYSTAL) {
-                                        // Gen2 items are 1 byte
-                                        if (value > 0xFFUL) value = 0xFFUL;
-                                        uint8_t newItem = static_cast<uint8_t>(value);
-                                        size_t pi = fd.pokemonIndex;
-                                        if (pi < tr.gen2.party.size()) {
-                                            const auto& pinfo = tr.gen2.party[pi];
-                                            if (pinfo.hasItem && pinfo.itemOffset < fileBuffer.size()) {
-                                                DataUtils::writeU8(fileBuffer, pinfo.itemOffset, newItem);
-                                                hasUnsavedChanges = true;
-                                            }
-                                        }
-                                    } else {
-                                        // Gen3 items are 2 bytes
-                                        if (value > 0xFFFFUL) value = 0xFFFFUL;
-                                        uint16_t newItem = static_cast<uint16_t>(value);
-                                        if (tr.gen3.partyOffset != 0) {
-                                            size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
-                                            size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
-                                            // Types 2 and 3 store the item before the moves at +0x06.
-                                            // Type 1 and other types place the item after four moves at +0x0E.
-                                            if (tr.type == 2 || tr.type == 3) {
-                                                if (poff + 7 < fileBuffer.size()) {
-                                                    DataUtils::writeU16LE(fileBuffer, poff + 0x06, newItem);
-                                                    hasUnsavedChanges = true;
-                                                }
-                                            } else {
-                                                if (poff + 0x0F < fileBuffer.size()) {
-                                                    DataUtils::writeU16LE(fileBuffer, poff + 0x0E, newItem);
-                                                    hasUnsavedChanges = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                            case FieldKind::PokemonMove: {
-                                if (!editBuffer.empty()) {
-                                    if (isGen1Game()) {
-                                        break;
-                                    }
-                                    unsigned long value = std::stoul(editBuffer, nullptr, 16);
-                                    if (gameType == GameType::GEN2_GS || gameType == GameType::GEN2_CRYSTAL) {
-                                        // Gen2 moves are 1 byte each
-                                        if (value > 0xFFUL) value = 0xFFUL;
-                                        uint8_t newMove = static_cast<uint8_t>(value);
-                                        size_t pi = fd.pokemonIndex;
-                                        size_t mj = fd.subIndex;
-                                        if (pi < tr.gen2.party.size()) {
-                                            const auto& pinfo = tr.gen2.party[pi];
-                                            if (pinfo.hasMoves && mj < 4) {
-                                                size_t moff = pinfo.moveOffsets[mj];
-                                                if (moff < fileBuffer.size()) {
-                                                    DataUtils::writeU8(fileBuffer, moff, newMove);
-                                                    hasUnsavedChanges = true;
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        // Gen3 moves are 2 bytes
-                                        if (value > 0xFFFFUL) value = 0xFFFFUL;
-                                        uint16_t newMove = static_cast<uint16_t>(value);
-                                        if (tr.gen3.partyOffset != 0) {
-                                            size_t perSz = ((tr.type == 0) || (tr.type == 2)) ? 8 : 16;
-                                            size_t poff = tr.gen3.partyOffset + fd.pokemonIndex * perSz;
-                                            // Type 3 stores moves after the item at +0x08.
-                                            // Type 1 and other types store moves immediately after level/species at +0x06.
-                                            if (tr.type == 3) {
-                                                size_t moff = poff + 0x08 + fd.subIndex * 2;
-                                                if (moff + 1 < fileBuffer.size()) {
-                                                    DataUtils::writeU16LE(fileBuffer, moff, newMove);
-                                                    hasUnsavedChanges = true;
-                                                }
-                                            } else {
-                                                size_t moff = poff + 0x06 + fd.subIndex * 2;
-                                                if (moff + 1 < fileBuffer.size()) {
-                                                    DataUtils::writeU16LE(fileBuffer, moff, newMove);
-                                                    hasUnsavedChanges = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    } catch (...) {
-                        // Ignore parse errors for invalid numeric input
-                    }
-                }
-                editingValue = false;
-                editBuffer.clear();
-                requestRedraw();
-                return;
-            }
-            // Handle backspace when editing
-            if (key == SDLK_BACKSPACE) {
-                if (!editBuffer.empty()) {
-                    editBuffer.pop_back();
-                    requestRedraw();
-                }
-                return;
-            }
-            // Input handling for the edit buffer
-            if (selectedField < fields.size()) {
-                const FieldDescriptor& fd = fields[selectedField];
-                // Name editing: allow alphanumeric, space, hyphen, period, apostrophe
-                if (fd.kind == FieldKind::Name) {
-                    char c = 0;
-                    if (key >= SDLK_A && key <= SDLK_Z) {
-                        c = static_cast<char>('A' + (key - SDLK_A));
-                    } else if (key >= SDLK_A && key <= SDLK_Z) {
-                        c = static_cast<char>('a' + (key - SDLK_A));
-                    } else if (key >= SDLK_0 && key <= SDLK_9) {
-                        c = static_cast<char>('0' + (key - SDLK_0));
-                    } else if (key == SDLK_SPACE) {
-                        c = ' ';
-                    } else if (key == SDLK_MINUS) {
-                        c = '-';
-                    } else if (key == SDLK_PERIOD) {
-                        c = '.';
-                    } else if (key == SDLK_APOSTROPHE) {
-                        c = '\'';
-                    }
-                    if (c != 0) {
-                        if (editBuffer.length() < 11) {
-                            editBuffer.push_back(c);
-                            requestRedraw();
-                        }
-                        return;
-                    }
-                } else if (fd.kind == FieldKind::PartySize || fd.kind == FieldKind::PokemonLevel || fd.kind == FieldKind::AI) {
-                    // Decimal numeric fields
-                    if (key >= SDLK_0 && key <= SDLK_9) {
-                        char c = static_cast<char>('0' + (key - SDLK_0));
-                        size_t maxLen = 10;
-                        if (fd.kind == FieldKind::PartySize) {
-                            maxLen = 1;
-                        } else if (fd.kind == FieldKind::PokemonLevel) {
-                            maxLen = 3;
-                        }
-                        if (editBuffer.length() < maxLen) {
-                            editBuffer.push_back(c);
-                            requestRedraw();
-                        }
-                        return;
-                    }
-                } else {
-                    // Hexadecimal numeric fields
-                    char c = 0;
-                    if (key >= SDLK_0 && key <= SDLK_9) {
-                        c = static_cast<char>('0' + (key - SDLK_0));
-                    } else if (key >= SDLK_A && key <= SDLK_F) {
-                        c = static_cast<char>('A' + (key - SDLK_A));
-                    } else if (key >= SDLK_A && key <= SDLK_F) {
-                        c = static_cast<char>('a' + (key - SDLK_A));
-                    }
-                    if (c != 0) {
-                        size_t maxLen = 2;
-                        if (fd.kind == FieldKind::TrainerItem || fd.kind == FieldKind::PokemonItem || fd.kind == FieldKind::PokemonSpecies || fd.kind == FieldKind::PokemonMove) {
-                            maxLen = 4;
-                        } else if (fd.kind == FieldKind::Class || fd.kind == FieldKind::Flags || fd.kind == FieldKind::Sprite || fd.kind == FieldKind::Type) {
-                            maxLen = 2;
-                        }
-                        if (editBuffer.length() < maxLen) {
-                            editBuffer.push_back(static_cast<char>(std::toupper(c)));
-                            requestRedraw();
-                        }
-                        return;
-                    }
-                }
-            }
-            // Ignore other keys while editing
+            handleEditInput(key);
             return;
         }
 
@@ -1744,6 +1832,7 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             writeFile(outPath);
             return;
         }
+        
         // Toggle search mode
         if (!searchMode && (key == SDLK_S) && !(mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI))) {
             searchMode = true;
@@ -1751,6 +1840,7 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             requestRedraw();
             return;
         }
+        
         // Handle search input
         if (searchMode) {
             if (key == SDLK_RETURN || key == SDLK_RETURN2 || key == SDLK_KP_ENTER) {
@@ -1770,28 +1860,21 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                 refreshDisplayOrder();
                 requestRedraw();
                 return;
-            } else {
-                // Append printable characters
-                if (key >= 32 && key < 127) {
-                    char ch = static_cast<char>(key);
-                    searchTerm.push_back(static_cast<char>(tolower(ch)));
-                    refreshDisplayOrder();
-                    requestRedraw();
-                }
-                return;
+            } else if (key >= 32 && key < 127) {
+                searchTerm.push_back(static_cast<char>(tolower(static_cast<char>(key))));
+                refreshDisplayOrder();
+                requestRedraw();
             }
+            return;
         }
 
-        // Not editing or in search mode: handle global commands and navigation
-        // Universal quit via Escape
+        // Escape - quit or exit details
         if (key == SDLK_ESCAPE) {
             if (viewingDetails) {
-                // Exit details mode without quitting the application
                 viewingDetails = false;
                 selectedField = 0;
                 requestRedraw();
             } else {
-                // Prompt to quit when there are unsaved changes.  Otherwise quit immediately.
                 if (hasUnsavedChanges) {
                     if (showQuitConfirmDialog()) {
                         quit();
@@ -1803,7 +1886,7 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             return;
         }
 
-        // Toggle sorting: cycle through memory → class → name
+        // Toggle sorting
         if (key == SDLK_T) {
             if (sortMode == SortMode::Memory) {
                 sortMode = SortMode::Class;
@@ -1816,11 +1899,33 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
             requestRedraw();
             return;
         }
-        // Handle Enter: either open details or start editing a field
+        
+        // Press 'I' to start editing by name (when viewing details)
+        if (key == SDLK_I && viewingDetails && !editingValue) {
+            if (selectedField < fields.size()) {
+                const FieldDescriptor& fd = fields[selectedField];
+                bool canEditByName = false;
+                if (isGen3Game() && fd.kind == FieldKind::Class) {
+                    canEditByName = true;
+                } else if (fd.kind == FieldKind::PokemonSpecies) {
+                    canEditByName = true;
+                } else if (fd.kind == FieldKind::TrainerItem || fd.kind == FieldKind::PokemonItem) {
+                    canEditByName = true;
+                } else if (fd.kind == FieldKind::PokemonMove) {
+                    canEditByName = true;
+                }
+                
+                if (canEditByName) {
+                    startEditing(true);
+                }
+            }
+            return;
+        }
+        
+        // Handle Enter - start hex-based editing or open details
         if (key == SDLK_RETURN || key == SDLK_RETURN2 || key == SDLK_KP_ENTER) {
             if (!displayOrder.empty()) {
                 if (!viewingDetails) {
-                    // Open details view and select the first field
                     viewingDetails = true;
                     selectedField = 0;
                     requestRedraw();
@@ -1830,45 +1935,46 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                         bool isGen2 = isGen2Game();
                         bool isGen1 = isGen1Game();
                         bool readOnly = false;
+                        
                         if (isGen2 || isGen1) {
                             if (fd.kind == FieldKind::Name || fd.kind == FieldKind::Class ||
                                 fd.kind == FieldKind::Type || fd.kind == FieldKind::PartySize) {
                                 readOnly = true;
                             }
-                            if (isGen1) {
-                                if (fd.kind == FieldKind::PokemonItem || fd.kind == FieldKind::PokemonMove || fd.kind == FieldKind::TrainerItem) {
-                                    readOnly = true;
-                                }
+                            if (isGen1 && (fd.kind == FieldKind::PokemonItem || 
+                                          fd.kind == FieldKind::PokemonMove || 
+                                          fd.kind == FieldKind::TrainerItem)) {
+                                readOnly = true;
                             }
                         }
-                        if (!readOnly) {
-                            editingValue = true;
-                            editBuffer.clear();
-                            requestRedraw();
+                        
+                        // Name field uses text mode
+                        if (fd.kind == FieldKind::Name) {
+                            startEditing(false);
+                        } else if (!readOnly) {
+                            // Other fields use hex mode
+                            startEditing(false);
                         }
-                        // If readOnly, ignore the Enter key and stay in details view.
                     }
                 }
             }
             return;
         }
-        // Navigation when not editing and not in search mode
+        
+        // Navigation
         if (!viewingDetails) {
             if (key == SDLK_UP) {
                 if (displayOrder.empty()) return;
                 if (selectedIndex > 0) {
                     selectedIndex--;
                 } else {
-                    // wrap to last
                     selectedIndex = displayOrder.size() - 1;
-                    // ensure the last item is visible by scrolling to bottom
                     if (scrollbar.visibleItems < scrollbar.totalItems) {
                         scrollbar.offset = scrollbar.totalItems - scrollbar.visibleItems;
                     } else {
                         scrollbar.offset = 0;
                     }
                 }
-                // adjust scroll if needed
                 if (selectedIndex < scrollbar.offset) {
                     scrollBy(-1);
                 } else if (selectedIndex >= scrollbar.offset + scrollbar.visibleItems) {
@@ -1882,7 +1988,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                 if (selectedIndex + 1 < displayOrder.size()) {
                     selectedIndex++;
                 } else {
-                    // wrap to first
                     selectedIndex = 0;
                     scrollbar.offset = 0;
                 }
@@ -1895,22 +2000,18 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                 return;
             }
         } else {
-            // Navigation when viewing details and not editing
             if (key == SDLK_UP) {
                 if (fields.empty()) return;
                 if (selectedField > 0) {
                     selectedField--;
                 } else {
-                    // wrap to last field
                     selectedField = fields.size() - 1;
-                    // Compute visible rows for details panel
                     int headerHeight = charHeight * 2 + 10;
                     int listY = headerHeight + 10;
                     int detailsY = listY;
                     int rowHeight = charHeight + 6;
                     int detailsHeight = windowHeight - detailsY - 10;
                     size_t visibleRows = (detailsHeight / rowHeight);
-                    // scroll to bottom
                     if (visibleRows < fields.size()) {
                         detailsScrollOffset = fields.size() - visibleRows;
                     } else {
@@ -1920,7 +2021,6 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                     requestRedraw();
                     return;
                 }
-                // After moving selection upwards, ensure the selected field is visible
                 {
                     int headerHeight = charHeight * 2 + 10;
                     int listY = headerHeight + 10;
@@ -1944,14 +2044,12 @@ void PokemonTrainerEditor::handleEvent(SDL_Event& event) {
                 if (selectedField + 1 < fields.size()) {
                     selectedField++;
                 } else {
-                    // wrap to first field
                     selectedField = 0;
                     detailsScrollOffset = 0;
                     detailsScrollbar.offset = 0;
                     requestRedraw();
                     return;
                 }
-                // After moving selection downwards, ensure the selected field is visible
                 {
                     int headerHeight = charHeight * 2 + 10;
                     int listY = headerHeight + 10;

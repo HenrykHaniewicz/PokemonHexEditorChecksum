@@ -19,84 +19,75 @@
 
 class PokemonPartyEditor : public SDLAppBase {
 public:
-    // Enumeration of high-level game modes we support
     enum class GameType {
         UNKNOWN,
-        GEN1,           // Red/Blue/Yellow/Green
-        GEN2_GS,        // Gold/Silver
-        GEN2_CRYSTAL,   // Crystal
-        GEN3_RS,        // Ruby/Sapphire
-        GEN3_EMERALD,   // Emerald
-        GEN3_FRLG       // FireRed/LeafGreen
+        GEN1,
+        GEN2_GS,
+        GEN2_CRYSTAL,
+        GEN3_RS,
+        GEN3_EMERALD,
+        GEN3_FRLG
     };
 
-    // Gen 1 offsets
     static constexpr size_t GEN1_PARTY_OFFSET_ENG = 0x2F2C;
     static constexpr size_t GEN1_PARTY_OFFSET_JPN = 0x2ED5;
-    
-    // Gen 2 offsets
+
     static constexpr size_t GEN2_GS_PARTY_OFFSET_ENG = 0x288A;
     static constexpr size_t GEN2_GS_PARTY_OFFSET_JPN = 0x283E;
     static constexpr size_t GEN2_CRYSTAL_PARTY_OFFSET_ENG = 0x2865;
     static constexpr size_t GEN2_CRYSTAL_PARTY_OFFSET_JPN = 0x281A;
-    
+
     static constexpr size_t MAX_PARTY_SIZE = 6;
-    
-    // Data sizes vary by generation
+
     static constexpr size_t GEN1_POKEMON_DATA_SIZE = 0x2C;
-    static constexpr size_t GEN2_POKEMON_DATA_SIZE = 0x30; // 48 bytes
-    static constexpr size_t GEN3_POKEMON_DATA_SIZE = 100;  // 100 bytes for party Pokemon
-    
-    static constexpr size_t NAME_LENGTH_ENG = 11;  // 10 chars + terminator
-    static constexpr size_t NAME_LENGTH_JPN = 6;   // 5 chars + terminator
-    static constexpr size_t GEN3_NAME_LENGTH = 10; // Gen 3 nickname length (no terminator stored separately)
-    static constexpr size_t GEN3_OT_NAME_LENGTH = 7; // Gen 3 OT name length
+    static constexpr size_t GEN2_POKEMON_DATA_SIZE = 0x30;
+    static constexpr size_t GEN3_POKEMON_DATA_SIZE = 100;
+
+    static constexpr size_t NAME_LENGTH_ENG = 11;
+    static constexpr size_t NAME_LENGTH_JPN = 6;
+    static constexpr size_t GEN3_NAME_LENGTH = 10;
+    static constexpr size_t GEN3_OT_NAME_LENGTH = 7;
 
     struct PokemonData {
-        // Common fields
-        uint8_t species{0};       // Gen 1/2 species
-        uint16_t speciesGen3{0};  // Gen 3 species (2 bytes)
+        uint8_t species{0};
+        uint16_t speciesGen3{0};
         uint16_t currentHP{0};
         uint8_t level{0};
         uint8_t status{0};
-        std::array<uint8_t, 4> moves{0, 0, 0, 0};      // Gen 1/2 moves
-        std::array<uint16_t, 4> movesGen3{0, 0, 0, 0}; // Gen 3 moves (2 bytes each)
-        uint16_t trainerID{0};    // Gen 1/2 OT ID
-        uint32_t otIdFull{0};     // Gen 3 full OT ID (includes secret ID)
+        std::array<uint8_t, 4> moves{0, 0, 0, 0};
+        std::array<uint16_t, 4> movesGen3{0, 0, 0, 0};
+        uint16_t trainerID{0};
+        uint32_t otIdFull{0};
         uint32_t exp{0};
         std::array<uint8_t, 4> ppValues{0, 0, 0, 0};
-        
-        // Gen 1 specific
+
         uint8_t levelBox{0};
         uint8_t type1{0};
         uint8_t type2{0};
         uint8_t catchRate{0};
-        uint16_t special{0};  // Gen 1 has combined Special stat
-        
-        // Gen 2 specific
-        uint8_t heldItem{0};      // Gen 2 held item
-        uint16_t heldItemGen3{0}; // Gen 3 held item (2 bytes)
+        uint16_t special{0};
+
+        uint8_t heldItem{0};
+        uint16_t heldItemGen3{0};
         uint8_t friendship{0};
         uint8_t pokerus{0};
         uint16_t caughtData{0};
         uint16_t specialAttack{0};
         uint16_t specialDefense{0};
-        
-        // Common stats (Gen 1/2 use 16-bit EVs, Gen 3 uses 8-bit)
+
         uint16_t hpEV{0};
         uint16_t attackEV{0};
         uint16_t defenseEV{0};
         uint16_t speedEV{0};
-        uint16_t specialEV{0};  // Gen 1/2 Special
-        uint8_t spAtkEV{0};     // Gen 3 SpAtk EV
-        uint8_t spDefEV{0};     // Gen 3 SpDef EV
-        uint16_t ivData{0};     // Gen 1/2 IV data
+        uint16_t specialEV{0};
+        uint8_t spAtkEV{0};
+        uint8_t spDefEV{0};
+        uint16_t ivData{0};
         uint16_t maxHP{0};
         uint16_t attack{0};
         uint16_t defense{0};
         uint16_t speed{0};
-        
-        // Gen 3 specific
+
         uint32_t personalityValue{0};
         uint8_t originalNature{0};
         uint8_t language{0};
@@ -105,44 +96,38 @@ public:
         uint32_t statusCondition{0};
         uint8_t mailId{0};
         uint8_t ppBonuses{0};
-        
-        // Gen 3 IVs, Egg, Ability (packed in 32-bit field)
+
         uint32_t ivsEggAbility{0};
-        
-        // Gen 3 Origins info
+
         uint16_t originsInfo{0};
         uint8_t metLocation{0};
-        
-        // Gen 3 Contest stats
+
         uint8_t coolness{0};
         uint8_t beauty{0};
         uint8_t cuteness{0};
         uint8_t smartness{0};
         uint8_t toughness{0};
         uint8_t feel{0};
-        
-        // Gen 3 Ribbons and Obedience
+
         uint32_t ribbonsObedience{0};
-        
-        // Decoded names
+
         std::string nickname;
-        std::string otName;  // Original Trainer name
-        
-        bool isEmpty() const { 
+        std::string otName;
+
+        bool isEmpty() const {
             return (species == 0 || species == 0xFF) && (speciesGen3 == 0);
         }
     };
 
     enum class EditField {
-        // Common fields
         SPECIES = 0,
         LEVEL,
         CURRENT_HP,
         MAX_HP,
         STATUS,
-        TYPE1,          // Gen 1 only
-        TYPE2,          // Gen 1 only
-        HELD_ITEM,      // Gen 2+ only
+        TYPE1,
+        TYPE2,
+        HELD_ITEM,
         MOVE1,
         MOVE2,
         MOVE3,
@@ -154,67 +139,61 @@ public:
         ATTACK,
         DEFENSE,
         SPEED,
-        SPECIAL,        // Gen 1 only
-        SPECIAL_ATK,    // Gen 2+ only
-        SPECIAL_DEF,    // Gen 2+ only
+        SPECIAL,
+        SPECIAL_ATK,
+        SPECIAL_DEF,
         HP_EV,
         ATTACK_EV,
         DEFENSE_EV,
         SPEED_EV,
-        SPECIAL_EV,     // Gen 1/2 only
-        SP_ATK_EV,      // Gen 3 only
-        SP_DEF_EV,      // Gen 3 only
-        DV_ATTACK,      // Gen 1/2
-        DV_DEFENSE,     // Gen 1/2
-        DV_SPEED,       // Gen 1/2
-        DV_SPECIAL,     // Gen 1/2
-        DV_HP,          // Gen 1/2 (derived, display only)
-        
-        FRIENDSHIP,     // Gen 2+ only
-        POKERUS,        // Gen 2+ only
+        SPECIAL_EV,
+        SP_ATK_EV,
+        SP_DEF_EV,
+        DV_ATTACK,
+        DV_DEFENSE,
+        DV_SPEED,
+        DV_SPECIAL,
+        DV_HP,
+
+        FRIENDSHIP,
+        POKERUS,
         NICKNAME,
         OT_NAME,
         EXP,
-        
-        // Gen 3 specific fields
-        PID_DISPLAY,    // Display only (not editable)
-        SUBSTRUCTURE_ORDER, // Display only (not editable)
+
+        PID_DISPLAY,
+        SUBSTRUCTURE_ORDER,
         NATURE,
-        OT_ID,          // Gen 3 full OT ID
-        LANGUAGE,       // Gen 3
-        MISC_FLAGS,     // Gen 3
-        MARKINGS,       // Gen 3
-        
-        // Gen 3 IVs (5-bit each, 0-31)
+        OT_ID,
+        LANGUAGE,
+        MISC_FLAGS,
+        MARKINGS,
+
         IV_HP,
         IV_ATTACK,
         IV_DEFENSE,
         IV_SPEED,
         IV_SP_ATK,
         IV_SP_DEF,
-        
-        // Gen 3 Egg and Ability flags
+
         IS_EGG,
         ABILITY_FLAG,
-        
-        // Gen 3 Origins
+
         MET_LOCATION,
         LEVEL_MET,
         GAME_OF_ORIGIN,
         POKEBALL,
         OT_GENDER,
-        
-        // Gen 3 Contest stats
+
         COOLNESS,
         BEAUTY,
         CUTENESS,
         SMARTNESS,
         TOUGHNESS,
         FEEL,
-        
-        // Gen 3 Ribbons (display only for now)
+
         RIBBONS_DISPLAY,
-        
+
         FIELD_COUNT
     };
 
@@ -224,39 +203,34 @@ private:
     size_t fileSize{0};
     std::string gameName;
     GameType gameType{GameType::UNKNOWN};
-    int generation{0};  // 1, 2, or 3
-    
-    // Flags
+    int generation{0};
+
     bool isJapanese{false};
     bool overwriteMode{false};
     bool hasUnsavedChanges{false};
-    
-    // Party data
+
     uint8_t partyCount{0};
-    std::array<uint8_t, 7> partySpecies{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // +1 for terminator
+    std::array<uint8_t, 7> partySpecies{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     std::array<PokemonData, 6> partyPokemon;
     std::array<uint8_t, 6> originalPartySpecies{0, 0, 0, 0, 0, 0};
     std::array<uint16_t, 6> originalPartySpeciesGen3{0, 0, 0, 0, 0, 0};
-    
-    // Gen 3 save block info
+
     Generation3Utils::SaveBlock gen3BlockA;
     Generation3Utils::SaveBlock gen3BlockB;
     const Generation3Utils::SaveBlock* activeGen3Block{nullptr};
     size_t gen3Section1Offset{0};
     size_t gen3PartyOffset{0};
-    
-    // UI state
+
     int currentPokemonIndex{0};
     int selectedField{0};
     bool editing{false};
-    bool editingByName{false};  // True when editing by name (via 'i' key)
+    bool editingByName{false};
     std::string editBuffer;
     SDL_Rect saveButtonRect{};
     bool saveButtonHovered{false};
 
     TextEncoding encoding;
-    
-    // Helper functions
+
     size_t getPartyOffset() const;
     size_t getPokemonDataSize() const;
     size_t getNameLength() const;
@@ -268,7 +242,7 @@ private:
     void updateChecksumGen1();
     void updateChecksumGen2();
     void updateChecksumGen3();
-    
+
     void setEncodingForGame();
 
     void parseGen1Pokemon(PokemonData& pkmn, size_t offset);
@@ -277,12 +251,10 @@ private:
     void writeGen1Pokemon(const PokemonData& pkmn, size_t offset);
     void writeGen2Pokemon(const PokemonData& pkmn, size_t offset);
     void writeGen3Pokemon(const PokemonData& pkmn, size_t offset);
-    
-    // Gen 3 specific helpers
+
     bool initGen3SaveStructure();
     int getGen3GameType() const;
-    
-    // Field helpers
+
     const char* getFieldName(EditField field) const;
     std::string getFieldValue(int pokemonIndex, EditField field) const;
     bool isFieldEditable(EditField field) const;
@@ -293,16 +265,10 @@ private:
     void handleEditInput(SDL_Keycode key);
     void commitEdit();
     bool validateAndApplyEdit(int pokemonIndex, EditField field, const std::string& value);
-    
-    // Name lookup helpers
-    uint8_t lookupPokemonIdByName(const std::string& name) const;
-    uint16_t lookupPokemonIdByNameGen3(const std::string& name) const;
-    uint8_t lookupMoveIdByName(const std::string& name) const;
-    uint16_t lookupMoveIdByNameGen3(const std::string& name) const;
-    uint8_t lookupItemIdByName(const std::string& name) const;
-    uint16_t lookupItemIdByNameGen3(const std::string& name) const;
-    
-    // Pokemon helpers
+
+    enum class LookupType { POKEMON, MOVE, ITEM };
+    uint16_t lookupIdByName(LookupType type, const std::string& name) const;
+
     std::string getPokemonTabName(int index) const;
     const char* getStatusName(uint8_t status) const;
     std::string getGen3StatusName(uint32_t status) const;
@@ -312,26 +278,23 @@ private:
     const char* getItemName(uint8_t item) const;
     const char* getItemNameGen3(uint16_t item) const;
 
-    // Pokedex update helpers
     void updatePokedexForNewPokemon();
     void updatePokedexGen1();
     void updatePokedexGen2();
     void updatePokedexGen3();
-    
+
     bool isPokedexBitSet(const std::string& buffer, size_t offset, uint16_t pokedexNum) const;
     void setPokedexBit(std::string& buffer, size_t offset, uint16_t pokedexNum);
-    void setPokedexBitGen3(std::string& buffer, size_t sectionOffset, 
+    void setPokedexBitGen3(std::string& buffer, size_t sectionOffset,
                            size_t dataOffset, uint16_t pokedexNum);
     bool isPokedexBitSetGen3(const std::string& buffer, size_t sectionOffset,
                               size_t dataOffset, uint16_t pokedexNum) const;
-    
+
     uint16_t getPokedexNumber(uint16_t speciesId) const;
-    
-    // IV/DV helpers
+
     uint8_t getIV(uint16_t ivData, const std::string& stat) const;
     uint16_t setIV(uint16_t ivData, const std::string& stat, uint8_t value) const;
-    
-    // File I/O helpers
+
     bool fileExists(const std::string& path);
     std::string getOutputPath();
     bool saveFile();
@@ -339,7 +302,6 @@ private:
     void adjustScrollbarForSelectedField();
 
 protected:
-    // SDLAppBase overrides
     void render() override;
     void handleEvent(SDL_Event& event) override;
     void update(float deltaTime) override;

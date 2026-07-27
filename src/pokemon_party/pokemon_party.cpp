@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstring>
 #include <utility>
+#include <random>
 
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -43,17 +44,16 @@ bool PokemonPartyEditor::loadFile(const char* filename) {
 
 bool PokemonPartyEditor::setGame(const std::string& game) {
     std::string g = game;
-    std::transform(g.begin(), g.end(), g.begin(), [](unsigned char c) { 
-        return static_cast<char>(std::tolower(c)); 
+    std::transform(g.begin(), g.end(), g.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
     });
 
     gameType = GameType::UNKNOWN;
     gameName.clear();
     generation = 0;
-    
-    // Determine game type
+
     if (g == "red" || g == "blue" || g == "yellow" || g == "green" ||
-        g == "pokemon_red" || g == "pokemon_blue" || g == "pokemon_yellow" || 
+        g == "pokemon_red" || g == "pokemon_blue" || g == "pokemon_yellow" ||
         g == "pokemon_green") {
         gameType = GameType::GEN1;
         generation = 1;
@@ -80,7 +80,7 @@ bool PokemonPartyEditor::setGame(const std::string& game) {
         gameType = GameType::GEN3_EMERALD;
         generation = 3;
         gameName = "Pokemon Emerald";
-    } else if (g == "firered" || g == "leafgreen" || g == "pokemon_firered" || 
+    } else if (g == "firered" || g == "leafgreen" || g == "pokemon_firered" ||
                g == "pokemon_leafgreen" || g == "frlg") {
         gameType = GameType::GEN3_FRLG;
         generation = 3;
@@ -94,15 +94,12 @@ bool PokemonPartyEditor::setGame(const std::string& game) {
         return false;
     }
 
-    // Set the encoding based on game and language
     setEncodingForGame();
 
-    // Append Japanese tag if necessary
     if (isJapanese) {
         gameName += " (Japanese)";
     }
 
-    // Initialize Gen 3 save structure if needed
     if (generation == 3) {
         if (!initGen3SaveStructure()) {
             std::cerr << "Failed to initialize Gen 3 save structure" << std::endl;
@@ -110,9 +107,8 @@ bool PokemonPartyEditor::setGame(const std::string& game) {
         }
     }
 
-    // Parse the party data
     parsePokemonData();
-    
+
     return true;
 }
 
@@ -140,26 +136,24 @@ bool PokemonPartyEditor::initGen3SaveStructure() {
     if (!Generation3Utils::parseSaveBlocks(fileBuffer, gen3BlockA, gen3BlockB)) {
         return false;
     }
-    
+
     activeGen3Block = Generation3Utils::getActiveSaveBlock(gen3BlockA, gen3BlockB);
     if (!activeGen3Block) {
         return false;
     }
-    
-    // Find Section 1 which contains the party data
+
     gen3Section1Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 1);
     if (gen3Section1Offset == static_cast<size_t>(-1)) {
         std::cerr << "Could not find Section 1 in save file" << std::endl;
         return false;
     }
-    
-    // Calculate party offset based on game type
+
     if (gameType == GameType::GEN3_FRLG) {
         gen3PartyOffset = gen3Section1Offset + Generation3Utils::GEN3_PARTY_OFFSET_FRLG;
     } else {
         gen3PartyOffset = gen3Section1Offset + Generation3Utils::GEN3_PARTY_OFFSET_RSE;
     }
-    
+
     return true;
 }
 
@@ -180,7 +174,7 @@ size_t PokemonPartyEditor::getPartyOffset() const {
     if (generation == 3) {
         return gen3PartyOffset;
     }
-    
+
     switch (gameType) {
         case GameType::GEN1:
             return isJapanese ? GEN1_PARTY_OFFSET_JPN : GEN1_PARTY_OFFSET_ENG;
@@ -214,74 +208,66 @@ size_t PokemonPartyEditor::getMaxNameChars() const {
 
 void PokemonPartyEditor::parsePokemonData() {
     size_t partyOffset = getPartyOffset();
-    
+
     if (generation == 3) {
-        // Gen 3: Party count is in the first 4 bytes (only first byte should be used)
         partyCount = DataUtils::readU8(fileBuffer, partyOffset);
         if (partyCount > MAX_PARTY_SIZE) {
             partyCount = MAX_PARTY_SIZE;
         }
-        
-        // Parse each Pokemon
+
         size_t pokemonDataOffset = partyOffset + 4;
         for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
             PokemonData& pkmn = partyPokemon[i];
-            
+
             if (i >= partyCount) {
                 pkmn = PokemonData();
                 originalPartySpeciesGen3[i] = 0;
                 continue;
             }
-            
+
             size_t offset = pokemonDataOffset + (i * GEN3_POKEMON_DATA_SIZE);
             parseGen3Pokemon(pkmn, offset);
-            originalPartySpeciesGen3[i] = pkmn.speciesGen3;  // Store original
+            originalPartySpeciesGen3[i] = pkmn.speciesGen3;
         }
         return;
     }
-    
-    // Gen 1/2 parsing
+
     size_t nameLength = getNameLength();
     size_t pokemonDataSize = getPokemonDataSize();
-    
-    // Read party count
+
     partyCount = DataUtils::readU8(fileBuffer, partyOffset);
     if (partyCount > MAX_PARTY_SIZE) {
         partyCount = MAX_PARTY_SIZE;
     }
-    
-    // Read species list (capacity + 1 for terminator)
+
     for (size_t i = 0; i < 7; i++) {
         partySpecies[i] = DataUtils::readU8(fileBuffer, partyOffset + 1 + i);
     }
-    
-    // Calculate pokemon data offset
-    size_t pokemonDataOffset = partyOffset + 8; // 1 byte count + 7 bytes species
-    
-    // Read each Pokemon's data
+
+    size_t pokemonDataOffset = partyOffset + 8;
+
     for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
         PokemonData& pkmn = partyPokemon[i];
-        
+
         if (i >= partyCount || partySpecies[i] == 0 || partySpecies[i] == 0xFF) {
             pkmn = PokemonData();
-            originalPartySpecies[i] = 0;  // Store original
+            originalPartySpecies[i] = 0;
             continue;
         }
-        
+
         size_t offset = pokemonDataOffset + (i * pokemonDataSize);
-        
+
         if (generation == 1) {
             parseGen1Pokemon(pkmn, offset);
         } else if (generation == 2) {
             parseGen2Pokemon(pkmn, offset);
         }
-        
-        originalPartySpecies[i] = pkmn.species;  // Store original
+
+        originalPartySpecies[i] = pkmn.species;
     }
-    
-    // Calculate name offsets
+
     size_t otNamesOffset, nicknamesOffset;
-    
+
     if (generation == 1) {
         if (isJapanese) {
             otNamesOffset = partyOffset + 0x110;
@@ -290,34 +276,32 @@ void PokemonPartyEditor::parsePokemonData() {
             otNamesOffset = partyOffset + 0x110;
             nicknamesOffset = partyOffset + 0x152;
         }
-    } else { // Gen 2
+    } else {
         size_t totalPokemonData = MAX_PARTY_SIZE * pokemonDataSize;
         otNamesOffset = pokemonDataOffset + totalPokemonData;
         nicknamesOffset = otNamesOffset + (MAX_PARTY_SIZE * nameLength);
     }
-    
-    // Read OT names
+
     for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
         if (i >= partyCount || partyPokemon[i].isEmpty()) {
             partyPokemon[i].otName.clear();
             continue;
         }
-        
+
         size_t offset = otNamesOffset + (i * nameLength);
         std::vector<uint8_t> nameBytes(nameLength);
         for (size_t j = 0; j < nameLength; j++) {
             nameBytes[j] = DataUtils::readU8(fileBuffer, offset + j);
         }
-        partyPokemon[i].otName = decodeText(nameBytes,encoding);
+        partyPokemon[i].otName = decodeText(nameBytes, encoding);
     }
-    
-    // Read nicknames
+
     for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
         if (i >= partyCount || partyPokemon[i].isEmpty()) {
             partyPokemon[i].nickname.clear();
             continue;
         }
-        
+
         size_t offset = nicknamesOffset + (i * nameLength);
         std::vector<uint8_t> nameBytes(nameLength);
         for (size_t j = 0; j < nameLength; j++) {
@@ -335,28 +319,28 @@ void PokemonPartyEditor::parseGen1Pokemon(PokemonData& pkmn, size_t offset) {
     pkmn.type1 = DataUtils::readU8(fileBuffer, offset + 0x05);
     pkmn.type2 = DataUtils::readU8(fileBuffer, offset + 0x06);
     pkmn.catchRate = DataUtils::readU8(fileBuffer, offset + 0x07);
-    
+
     for (size_t j = 0; j < 4; j++) {
         pkmn.moves[j] = DataUtils::readU8(fileBuffer, offset + 0x08 + j);
     }
-    
+
     pkmn.trainerID = DataUtils::readU16BE(fileBuffer, offset + 0x0C);
-    
+
     pkmn.exp = (static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x0E)) << 16) |
                (static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x0F)) << 8) |
                static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x10));
-    
+
     pkmn.hpEV = DataUtils::readU16BE(fileBuffer, offset + 0x11);
     pkmn.attackEV = DataUtils::readU16BE(fileBuffer, offset + 0x13);
     pkmn.defenseEV = DataUtils::readU16BE(fileBuffer, offset + 0x15);
     pkmn.speedEV = DataUtils::readU16BE(fileBuffer, offset + 0x17);
     pkmn.specialEV = DataUtils::readU16BE(fileBuffer, offset + 0x19);
     pkmn.ivData = DataUtils::readU16BE(fileBuffer, offset + 0x1B);
-    
+
     for (size_t j = 0; j < 4; j++) {
         pkmn.ppValues[j] = DataUtils::readU8(fileBuffer, offset + 0x1D + j);
     }
-    
+
     pkmn.level = DataUtils::readU8(fileBuffer, offset + 0x21);
     pkmn.maxHP = DataUtils::readU16BE(fileBuffer, offset + 0x22);
     pkmn.attack = DataUtils::readU16BE(fileBuffer, offset + 0x24);
@@ -368,28 +352,28 @@ void PokemonPartyEditor::parseGen1Pokemon(PokemonData& pkmn, size_t offset) {
 void PokemonPartyEditor::parseGen2Pokemon(PokemonData& pkmn, size_t offset) {
     pkmn.species = DataUtils::readU8(fileBuffer, offset + 0x00);
     pkmn.heldItem = DataUtils::readU8(fileBuffer, offset + 0x01);
-    
+
     for (size_t j = 0; j < 4; j++) {
         pkmn.moves[j] = DataUtils::readU8(fileBuffer, offset + 0x02 + j);
     }
-    
+
     pkmn.trainerID = DataUtils::readU16BE(fileBuffer, offset + 0x06);
-    
+
     pkmn.exp = (static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x08)) << 16) |
                (static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x09)) << 8) |
                static_cast<uint32_t>(DataUtils::readU8(fileBuffer, offset + 0x0A));
-    
+
     pkmn.hpEV = DataUtils::readU16BE(fileBuffer, offset + 0x0B);
     pkmn.attackEV = DataUtils::readU16BE(fileBuffer, offset + 0x0D);
     pkmn.defenseEV = DataUtils::readU16BE(fileBuffer, offset + 0x0F);
     pkmn.speedEV = DataUtils::readU16BE(fileBuffer, offset + 0x11);
     pkmn.specialEV = DataUtils::readU16BE(fileBuffer, offset + 0x13);
     pkmn.ivData = DataUtils::readU16BE(fileBuffer, offset + 0x15);
-    
+
     for (size_t j = 0; j < 4; j++) {
         pkmn.ppValues[j] = DataUtils::readU8(fileBuffer, offset + 0x17 + j);
     }
-    
+
     pkmn.friendship = DataUtils::readU8(fileBuffer, offset + 0x1B);
     pkmn.pokerus = DataUtils::readU8(fileBuffer, offset + 0x1C);
     pkmn.caughtData = DataUtils::readU16BE(fileBuffer, offset + 0x1D);
@@ -405,77 +389,67 @@ void PokemonPartyEditor::parseGen2Pokemon(PokemonData& pkmn, size_t offset) {
 }
 
 void PokemonPartyEditor::parseGen3Pokemon(PokemonData& pkmn, size_t offset) {
-    // Read unencrypted header (bytes 0x00-0x1F)
     pkmn.personalityValue = DataUtils::readU32LE(fileBuffer, offset + Generation3Utils::POKEMON_PID_OFFSET);
     pkmn.otIdFull = DataUtils::readU32LE(fileBuffer, offset + Generation3Utils::POKEMON_OTID_OFFSET);
-    
-    // Store original nature for comparison when editing
+
     pkmn.originalNature = Generation3Utils::getNatureFromPID(pkmn.personalityValue);
-    
-    // Decode nickname (10 bytes at offset 0x08, terminated by 0xFF)
+
     std::vector<uint8_t> nicknameBytes;
     for (size_t i = 0; i < GEN3_NAME_LENGTH; i++) {
         uint8_t byte = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_NICKNAME_OFFSET + i);
-        if (byte == 0xFF) break;  // Stop at terminator
+        if (byte == 0xFF) break;
         nicknameBytes.push_back(byte);
     }
     pkmn.nickname = decodeText(nicknameBytes, encoding);
-    
+
     pkmn.language = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_LANGUAGE_OFFSET);
     pkmn.miscFlags = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_MISC_FLAGS_OFFSET);
-    
-    // Decode OT name (7 bytes at offset 0x14, terminated by 0xFF)
+
     std::vector<uint8_t> otNameBytes;
     for (size_t i = 0; i < GEN3_OT_NAME_LENGTH; i++) {
         uint8_t byte = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_OT_NAME_OFFSET + i);
-        if (byte == 0xFF) break;  // Stop at terminator
+        if (byte == 0xFF) break;
         otNameBytes.push_back(byte);
     }
     pkmn.otName = decodeText(otNameBytes, encoding);
-    
+
     pkmn.markings = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_MARKINGS_OFFSET);
-    
-    // Decrypt and parse the 48-byte data section
+
     std::array<uint8_t, 48> decryptedData = Generation3Utils::decryptPokemonData(fileBuffer, offset);
-    Generation3Utils::Gen3SubstructureData subData = 
+    Generation3Utils::Gen3SubstructureData subData =
         Generation3Utils::parseSubstructureData(decryptedData, pkmn.personalityValue);
-    
-    // Copy substructure data to PokemonData
+
     pkmn.speciesGen3 = subData.species;
     pkmn.heldItemGen3 = subData.heldItem;
     pkmn.exp = subData.experience;
     pkmn.ppBonuses = subData.ppBonuses;
     pkmn.friendship = subData.friendship;
-    
+
     for (int i = 0; i < 4; i++) {
         pkmn.movesGen3[i] = subData.moves[i];
         pkmn.ppValues[i] = subData.pp[i];
     }
-    
-    // EVs (Gen 3 uses 8-bit EVs, but we store in 16-bit for compatibility)
+
     pkmn.hpEV = subData.hpEV;
     pkmn.attackEV = subData.attackEV;
     pkmn.defenseEV = subData.defenseEV;
     pkmn.speedEV = subData.speedEV;
     pkmn.spAtkEV = subData.spAtkEV;
     pkmn.spDefEV = subData.spDefEV;
-    
-    // Contest stats
+
     pkmn.coolness = subData.coolness;
     pkmn.beauty = subData.beauty;
     pkmn.cuteness = subData.cuteness;
     pkmn.smartness = subData.smartness;
     pkmn.toughness = subData.toughness;
     pkmn.feel = subData.feel;
-    
-    // Miscellaneous
+
     pkmn.pokerus = subData.pokerus;
     pkmn.metLocation = subData.metLocation;
     pkmn.originsInfo = subData.originsInfo;
     pkmn.ivsEggAbility = subData.ivsEggAbility;
     pkmn.ribbonsObedience = subData.ribbonsObedience;
-    
-    // Read party-only data (bytes 0x50-0x63)
+
     pkmn.statusCondition = DataUtils::readU32LE(fileBuffer, offset + Generation3Utils::POKEMON_STATUS_OFFSET);
     pkmn.level = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_LEVEL_OFFSET);
     pkmn.mailId = DataUtils::readU8(fileBuffer, offset + Generation3Utils::POKEMON_MAIL_ID_OFFSET);
@@ -497,28 +471,26 @@ uint16_t PokemonPartyEditor::getPokedexNumber(uint16_t speciesId) const {
     if (info) {
         return info->nationalDexNum;
     }
-    return 0; // Invalid
+    return 0;
 }
 
-bool PokemonPartyEditor::isPokedexBitSet(const std::string& buffer, size_t offset, 
+bool PokemonPartyEditor::isPokedexBitSet(const std::string& buffer, size_t offset,
                                           uint16_t pokedexNum) const {
     if (generation == 1) {
-        // Gen 1: 0-indexed, bit-packed
         if (pokedexNum == 0 || pokedexNum > 151) return false;
-        uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
-        size_t byteIndex = bitIndex >> 3;     // Divide by 8
-        uint8_t bitPos = bitIndex & 7;        // Modulo 8
-        
+        uint16_t bitIndex = pokedexNum - 1;
+        size_t byteIndex = bitIndex >> 3;
+        uint8_t bitPos = bitIndex & 7;
+
         if (offset + byteIndex >= fileSize) return false;
         uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
         return (byte >> bitPos) & 1;
     } else if (generation == 2) {
-        // Gen 2: 1-indexed (bit 0 = Bulbasaur #1), up to Celebi #251
         if (pokedexNum == 0 || pokedexNum > 251) return false;
-        uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
+        uint16_t bitIndex = pokedexNum - 1;
         size_t byteIndex = bitIndex >> 3;
         uint8_t bitPos = bitIndex & 7;
-        
+
         if (offset + byteIndex >= fileSize) return false;
         uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
         return (byte >> bitPos) & 1;
@@ -528,23 +500,21 @@ bool PokemonPartyEditor::isPokedexBitSet(const std::string& buffer, size_t offse
 
 void PokemonPartyEditor::setPokedexBit(std::string& buffer, size_t offset, uint16_t pokedexNum) {
     if (generation == 1) {
-        // Gen 1: 0-indexed
         if (pokedexNum == 0 || pokedexNum > 151) return;
         uint16_t bitIndex = pokedexNum - 1;
         size_t byteIndex = bitIndex >> 3;
         uint8_t bitPos = bitIndex & 7;
-        
+
         if (offset + byteIndex >= fileSize) return;
         uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
         byte |= (1 << bitPos);
         DataUtils::writeU8(buffer, offset + byteIndex, byte);
     } else if (generation == 2) {
-        // Gen 2: 1-indexed (bit 0 = Bulbasaur #1)
         if (pokedexNum == 0 || pokedexNum > 251) return;
         uint16_t bitIndex = pokedexNum - 1;
         size_t byteIndex = bitIndex >> 3;
         uint8_t bitPos = bitIndex & 7;
-        
+
         if (offset + byteIndex >= fileSize) return;
         uint8_t byte = DataUtils::readU8(buffer, offset + byteIndex);
         byte |= (1 << bitPos);
@@ -552,17 +522,17 @@ void PokemonPartyEditor::setPokedexBit(std::string& buffer, size_t offset, uint1
     }
 }
 
-void PokemonPartyEditor::setPokedexBitGen3(std::string& buffer, size_t sectionOffset, 
+void PokemonPartyEditor::setPokedexBitGen3(std::string& buffer, size_t sectionOffset,
                                             size_t dataOffset, uint16_t pokedexNum) {
     if (pokedexNum == 0 || pokedexNum > 386) return;
-    
-    uint16_t bitIndex = pokedexNum - 1;  // Convert to 0-based
-    size_t byteIndex = bitIndex >> 3;     // Divide by 8
-    uint8_t bitPos = bitIndex & 7;        // Modulo 8
-    
+
+    uint16_t bitIndex = pokedexNum - 1;
+    size_t byteIndex = bitIndex >> 3;
+    uint8_t bitPos = bitIndex & 7;
+
     size_t absoluteOffset = sectionOffset + dataOffset + byteIndex;
     if (absoluteOffset >= fileSize) return;
-    
+
     uint8_t byte = DataUtils::readU8(buffer, absoluteOffset);
     byte |= (1 << bitPos);
     DataUtils::writeU8(buffer, absoluteOffset, byte);
@@ -571,48 +541,41 @@ void PokemonPartyEditor::setPokedexBitGen3(std::string& buffer, size_t sectionOf
 bool PokemonPartyEditor::isPokedexBitSetGen3(const std::string& buffer, size_t sectionOffset,
                                                size_t dataOffset, uint16_t pokedexNum) const {
     if (pokedexNum == 0 || pokedexNum > 386) return false;
-    
+
     uint16_t bitIndex = pokedexNum - 1;
     size_t byteIndex = bitIndex >> 3;
     uint8_t bitPos = bitIndex & 7;
-    
+
     size_t absoluteOffset = sectionOffset + dataOffset + byteIndex;
     if (absoluteOffset >= fileSize) return false;
-    
+
     uint8_t byte = DataUtils::readU8(buffer, absoluteOffset);
     return (byte >> bitPos) & 1;
 }
 
 void PokemonPartyEditor::updatePokedexGen1() {
-    // Gen 1 offsets
     constexpr size_t POKEDEX_OWNED_OFFSET = 0x25A3;
     constexpr size_t POKEDEX_SEEN_OFFSET = 0x25B6;
-    
-    // Check each party slot
+
     for (size_t i = 0; i < partyCount; i++) {
         uint8_t currentSpecies = partyPokemon[i].species;
         uint8_t originalSpecies = originalPartySpecies[i];
-        
-        // Skip if species hasn't changed or is empty
+
         if (currentSpecies == originalSpecies || currentSpecies == 0 || currentSpecies == 0xFF) {
             continue;
         }
-        
-        // Get national dex number
+
         uint16_t dexNum = getPokedexNumber(static_cast<uint16_t>(currentSpecies));
         if (dexNum == 0 || dexNum > 151) continue;
-        
-        // Check if already owned/seen
+
         bool alreadyOwned = isPokedexBitSet(fileBuffer, POKEDEX_OWNED_OFFSET, dexNum);
         bool alreadySeen = isPokedexBitSet(fileBuffer, POKEDEX_SEEN_OFFSET, dexNum);
-        
-        // Set owned bit (which also implies seen)
+
         if (!alreadyOwned) {
             setPokedexBit(fileBuffer, POKEDEX_OWNED_OFFSET, dexNum);
             std::cout << "Updated Pokédex: Marked #" << dexNum << " as owned" << std::endl;
         }
-        
-        // Set seen bit
+
         if (!alreadySeen) {
             setPokedexBit(fileBuffer, POKEDEX_SEEN_OFFSET, dexNum);
             std::cout << "Updated Pokédex: Marked #" << dexNum << " as seen" << std::endl;
@@ -621,10 +584,9 @@ void PokemonPartyEditor::updatePokedexGen1() {
 }
 
 void PokemonPartyEditor::updatePokedexGen2() {
-    // Gen 2 offsets - primary and secondary
     size_t ownedOffsetPrimary, seenOffsetPrimary;
     size_t ownedOffsetSecondary, seenOffsetSecondary;
-    
+
     if (gameType == GameType::GEN2_GS) {
         if (isJapanese) {
             ownedOffsetPrimary = 0x29CE;
@@ -637,7 +599,7 @@ void PokemonPartyEditor::updatePokedexGen2() {
             ownedOffsetSecondary = 0x12AA;
             seenOffsetSecondary = 0x12CA;
         }
-    } else { // Crystal
+    } else {
         if (isJapanese) {
             ownedOffsetPrimary = 0x29AA;
             seenOffsetPrimary = 0x29CA;
@@ -650,41 +612,35 @@ void PokemonPartyEditor::updatePokedexGen2() {
             seenOffsetSecondary = 0x1C47;
         }
     }
-    
-    // Check each party slot
+
     for (size_t i = 0; i < partyCount; i++) {
         uint8_t currentSpecies = partyPokemon[i].species;
         uint8_t originalSpecies = originalPartySpecies[i];
-        
-        // Skip if species hasn't changed or is empty
+
         if (currentSpecies == originalSpecies || currentSpecies == 0 || currentSpecies == 0xFF) {
             continue;
         }
-        
-        // Get national dex number
+
         uint16_t dexNum = getPokedexNumber(static_cast<uint16_t>(currentSpecies));
         if (dexNum == 0 || dexNum > 251) continue;
-        
-        // Check if already owned/seen in primary save
+
         bool alreadyOwned = isPokedexBitSet(fileBuffer, ownedOffsetPrimary, dexNum);
         bool alreadySeen = isPokedexBitSet(fileBuffer, seenOffsetPrimary, dexNum);
-        
-        // Update primary save
+
         if (!alreadyOwned) {
             setPokedexBit(fileBuffer, ownedOffsetPrimary, dexNum);
             std::cout << "Updated Pokédex (primary): Marked #" << dexNum << " as owned" << std::endl;
         }
-        
+
         if (!alreadySeen) {
             setPokedexBit(fileBuffer, seenOffsetPrimary, dexNum);
             std::cout << "Updated Pokédex (primary): Marked #" << dexNum << " as seen" << std::endl;
         }
-        
-        // Update secondary save
+
         if (!alreadyOwned) {
             setPokedexBit(fileBuffer, ownedOffsetSecondary, dexNum);
         }
-        
+
         if (!alreadySeen) {
             setPokedexBit(fileBuffer, seenOffsetSecondary, dexNum);
         }
@@ -693,27 +649,24 @@ void PokemonPartyEditor::updatePokedexGen2() {
 
 void PokemonPartyEditor::updatePokedexGen3() {
     if (!activeGen3Block) return;
-    
-    // Find the relevant sections
+
     size_t section0Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 0);
     size_t section1Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 1);
     size_t section2Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 2);
     size_t section4Offset = Generation3Utils::findSectionOffset(activeGen3Block->sections, 4);
-    
-    if (section0Offset == static_cast<size_t>(-1) || 
+
+    if (section0Offset == static_cast<size_t>(-1) ||
         section1Offset == static_cast<size_t>(-1) ||
         section2Offset == static_cast<size_t>(-1) ||
         section4Offset == static_cast<size_t>(-1)) {
         std::cerr << "Could not find required sections for Pokédex update" << std::endl;
         return;
     }
-    
-    // Define offsets based on game type
+
     size_t ownedOffset, seenAOffset, seenBOffset, seenCOffset;
     size_t natDexAOffset, natDexBOffset, natDexCOffset;
-    
+
     if (gameType == GameType::GEN3_RS) {
-        // Ruby/Sapphire
         ownedOffset = 0x0028;
         seenAOffset = 0x005C;
         seenBOffset = 0x0938;
@@ -722,7 +675,6 @@ void PokemonPartyEditor::updatePokedexGen3() {
         natDexBOffset = 0x03A6;
         natDexCOffset = 0x044C;
     } else if (gameType == GameType::GEN3_EMERALD) {
-        // Emerald
         ownedOffset = 0x0028;
         seenAOffset = 0x005C;
         seenBOffset = 0x0988;
@@ -730,8 +682,7 @@ void PokemonPartyEditor::updatePokedexGen3() {
         natDexAOffset = 0x0019;
         natDexBOffset = 0x0402;
         natDexCOffset = 0x04A8;
-    } else { // FRLG
-        // FireRed/LeafGreen
+    } else {
         ownedOffset = 0x0028;
         seenAOffset = 0x005C;
         seenBOffset = 0x05F8;
@@ -740,83 +691,65 @@ void PokemonPartyEditor::updatePokedexGen3() {
         natDexBOffset = 0x0068;
         natDexCOffset = 0x011C;
     }
-    
+
     bool anyPokemonModified = false;
-    
-    // Check each party slot for changes
+
     for (size_t i = 0; i < partyCount; i++) {
         uint16_t currentSpecies = partyPokemon[i].speciesGen3;
         uint16_t originalSpecies = originalPartySpeciesGen3[i];
-        
-        // Skip if species hasn't changed or is empty
+
         if (currentSpecies == originalSpecies || currentSpecies == 0) {
             continue;
         }
-        
+
         anyPokemonModified = true;
-        
-        // Get national dex number
+
         uint16_t dexNum = getPokedexNumber(currentSpecies);
         if (dexNum == 0 || dexNum > 386) continue;
-        
-        // Check if already owned/seen
+
         bool alreadyOwned = isPokedexBitSetGen3(fileBuffer, section0Offset, ownedOffset, dexNum);
         bool alreadySeenA = isPokedexBitSetGen3(fileBuffer, section0Offset, seenAOffset, dexNum);
-        
-        // Update owned (Section 0)
+
         if (!alreadyOwned) {
             setPokedexBitGen3(fileBuffer, section0Offset, ownedOffset, dexNum);
             std::cout << "Updated Pokédex: Marked #" << dexNum << " as owned" << std::endl;
         }
-        
-        // Update all three "seen" copies
+
         if (!alreadySeenA) {
-            // Seen A (Section 0)
             setPokedexBitGen3(fileBuffer, section0Offset, seenAOffset, dexNum);
-            // Seen B (Section 1)
             setPokedexBitGen3(fileBuffer, section1Offset, seenBOffset, dexNum);
-            // Seen C (Section 4)
             setPokedexBitGen3(fileBuffer, section4Offset, seenCOffset, dexNum);
             std::cout << "Updated Pokédex: Marked #" << dexNum << " as seen" << std::endl;
         }
     }
-    
-    // For Ruby/Sapphire: Always enable National Dex if any Pokémon was modified
+
     if (gameType == GameType::GEN3_RS && anyPokemonModified) {
-        // Field A (Section 0, offset 0x0019, 2 bytes)
         DataUtils::writeU8(fileBuffer, section0Offset + natDexAOffset, 0x01);
         DataUtils::writeU8(fileBuffer, section0Offset + natDexAOffset + 1, 0xDA);
-        
-        // Field B (Section 2, offset 0x03A6, bit 6)
+
         size_t fieldBOffset = section2Offset + natDexBOffset;
         if (fieldBOffset < fileSize) {
             uint8_t fieldB = DataUtils::readU8(fileBuffer, fieldBOffset);
-            fieldB |= (1 << 6);  // Set bit 6
+            fieldB |= (1 << 6);
             DataUtils::writeU8(fileBuffer, fieldBOffset, fieldB);
         }
-        
-        // Field C (Section 2, offset 0x044C, 2 bytes)
+
         DataUtils::writeU8(fileBuffer, section2Offset + natDexCOffset, 0x02);
         DataUtils::writeU8(fileBuffer, section2Offset + natDexCOffset + 1, 0x03);
-        
+
         std::cout << "Enabled National Pokédex for Ruby/Sapphire" << std::endl;
     }
-    
-    // Update checksums for modified sections if any changes were made
+
     if (anyPokemonModified) {
-        // Section 0 (has owned, seen A, and possibly nat dex A)
-        Generation3Utils::updateSectionChecksum(fileBuffer, section0Offset, 
+        Generation3Utils::updateSectionChecksum(fileBuffer, section0Offset,
                                                Generation3Utils::GEN3_SECTION_SIZES[0]);
-        
-        // Section 1 (has seen B)
+
         Generation3Utils::updateSectionChecksum(fileBuffer, section1Offset,
                                                Generation3Utils::GEN3_SECTION_SIZES[1]);
-        
-        // Section 2 (has nat dex B and C for RS/E, or just B for FRLG)
+
         Generation3Utils::updateSectionChecksum(fileBuffer, section2Offset,
                                                 Generation3Utils::GEN3_SECTION_SIZES[2]);
-        
-        // Section 4 (has seen C)
+
         Generation3Utils::updateSectionChecksum(fileBuffer, section4Offset,
                                                Generation3Utils::GEN3_SECTION_SIZES[4]);
     }
@@ -871,32 +804,28 @@ void PokemonPartyEditor::compactPartyData() {
 
 void PokemonPartyEditor::writePokemonDataToBuffer() {
     if (generation == 3) {
-        // Write party count
         DataUtils::writeU8(fileBuffer, gen3PartyOffset, partyCount);
         DataUtils::writeU8(fileBuffer, gen3PartyOffset + 1, 0);
         DataUtils::writeU8(fileBuffer, gen3PartyOffset + 2, 0);
         DataUtils::writeU8(fileBuffer, gen3PartyOffset + 3, 0);
-        
-        // Write each Pokemon
+
         size_t pokemonDataOffset = gen3PartyOffset + 4;
         for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
             const PokemonData& pkmn = partyPokemon[i];
             size_t offset = pokemonDataOffset + (i * GEN3_POKEMON_DATA_SIZE);
-            
+
             if (i >= partyCount || pkmn.isEmpty()) {
-                // Clear empty slot
                 for (size_t j = 0; j < GEN3_POKEMON_DATA_SIZE; j++) {
                     DataUtils::writeU8(fileBuffer, offset + j, 0);
                 }
                 continue;
             }
-            
+
             writeGen3Pokemon(pkmn, offset);
         }
         return;
     }
-    
-    // Gen 1/2 writing (existing code)
+
     size_t partyOffset = getPartyOffset();
     size_t nameLength = getNameLength();
     size_t maxNameChars = getMaxNameChars();
@@ -1064,28 +993,28 @@ void PokemonPartyEditor::writeGen1Pokemon(const PokemonData& pkmn, size_t offset
     DataUtils::writeU8(fileBuffer, offset + 0x05, pkmn.type1);
     DataUtils::writeU8(fileBuffer, offset + 0x06, pkmn.type2);
     DataUtils::writeU8(fileBuffer, offset + 0x07, pkmn.catchRate);
-    
+
     for (size_t j = 0; j < 4; j++) {
         DataUtils::writeU8(fileBuffer, offset + 0x08 + j, pkmn.moves[j]);
     }
-    
+
     DataUtils::writeU16BE(fileBuffer, offset + 0x0C, pkmn.trainerID);
-    
+
     DataUtils::writeU8(fileBuffer, offset + 0x0E, (pkmn.exp >> 16) & 0xFF);
     DataUtils::writeU8(fileBuffer, offset + 0x0F, (pkmn.exp >> 8) & 0xFF);
     DataUtils::writeU8(fileBuffer, offset + 0x10, pkmn.exp & 0xFF);
-    
+
     DataUtils::writeU16BE(fileBuffer, offset + 0x11, pkmn.hpEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x13, pkmn.attackEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x15, pkmn.defenseEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x17, pkmn.speedEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x19, pkmn.specialEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x1B, pkmn.ivData);
-    
+
     for (size_t j = 0; j < 4; j++) {
         DataUtils::writeU8(fileBuffer, offset + 0x1D + j, pkmn.ppValues[j]);
     }
-    
+
     DataUtils::writeU8(fileBuffer, offset + 0x21, pkmn.level);
     DataUtils::writeU16BE(fileBuffer, offset + 0x22, pkmn.maxHP);
     DataUtils::writeU16BE(fileBuffer, offset + 0x24, pkmn.attack);
@@ -1097,28 +1026,28 @@ void PokemonPartyEditor::writeGen1Pokemon(const PokemonData& pkmn, size_t offset
 void PokemonPartyEditor::writeGen2Pokemon(const PokemonData& pkmn, size_t offset) {
     DataUtils::writeU8(fileBuffer, offset + 0x00, pkmn.species);
     DataUtils::writeU8(fileBuffer, offset + 0x01, pkmn.heldItem);
-    
+
     for (size_t j = 0; j < 4; j++) {
         DataUtils::writeU8(fileBuffer, offset + 0x02 + j, pkmn.moves[j]);
     }
-    
+
     DataUtils::writeU16BE(fileBuffer, offset + 0x06, pkmn.trainerID);
-    
+
     DataUtils::writeU8(fileBuffer, offset + 0x08, (pkmn.exp >> 16) & 0xFF);
     DataUtils::writeU8(fileBuffer, offset + 0x09, (pkmn.exp >> 8) & 0xFF);
     DataUtils::writeU8(fileBuffer, offset + 0x0A, pkmn.exp & 0xFF);
-    
+
     DataUtils::writeU16BE(fileBuffer, offset + 0x0B, pkmn.hpEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x0D, pkmn.attackEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x0F, pkmn.defenseEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x11, pkmn.speedEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x13, pkmn.specialEV);
     DataUtils::writeU16BE(fileBuffer, offset + 0x15, pkmn.ivData);
-    
+
     for (size_t j = 0; j < 4; j++) {
         DataUtils::writeU8(fileBuffer, offset + 0x17 + j, pkmn.ppValues[j]);
     }
-    
+
     DataUtils::writeU8(fileBuffer, offset + 0x1B, pkmn.friendship);
     DataUtils::writeU8(fileBuffer, offset + 0x1C, pkmn.pokerus);
     DataUtils::writeU16BE(fileBuffer, offset + 0x1D, pkmn.caughtData);
@@ -1135,15 +1064,15 @@ void PokemonPartyEditor::writeGen2Pokemon(const PokemonData& pkmn, size_t offset
 }
 
 void PokemonPartyEditor::writeGen3Pokemon(const PokemonData& pkmn, size_t offset) {
-    // Write unencrypted header
+    for (size_t j = 0; j < GEN3_POKEMON_DATA_SIZE; j++) {
+        DataUtils::writeU8(fileBuffer, offset + j, 0);
+    }
+
     DataUtils::writeU32LE(fileBuffer, offset + Generation3Utils::POKEMON_PID_OFFSET, pkmn.personalityValue);
     DataUtils::writeU32LE(fileBuffer, offset + Generation3Utils::POKEMON_OTID_OFFSET, pkmn.otIdFull);
-    
-    // Write nickname (10 bytes, with 0xFF terminator followed by 0x00 padding)
-    // First, encode the text without any terminator
+
     std::vector<uint8_t> nicknameEncoded = encodeText(pkmn.nickname, encoding, GEN3_NAME_LENGTH);
-    
-    // Find actual length (stop at any terminator that encodeText may have added)
+
     size_t nicknameLen = 0;
     for (size_t i = 0; i < nicknameEncoded.size(); i++) {
         if (nicknameEncoded[i] == 0xFF || nicknameEncoded[i] == 0x50) {
@@ -1151,27 +1080,24 @@ void PokemonPartyEditor::writeGen3Pokemon(const PokemonData& pkmn, size_t offset
         }
         nicknameLen++;
     }
-    
-    // Write the nickname bytes, then terminator, then zero padding
+
     for (size_t i = 0; i < GEN3_NAME_LENGTH; i++) {
         uint8_t value;
         if (i < nicknameLen) {
             value = nicknameEncoded[i];
         } else if (i == nicknameLen && nicknameLen != GEN3_NAME_LENGTH) {
-            value = 0xFF;  // Terminator immediately after name
+            value = 0xFF;
         } else {
-            value = 0x00;  // Zero padding after terminator
+            value = 0x00;
         }
         DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_NICKNAME_OFFSET + i, value);
     }
-    
+
     DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_LANGUAGE_OFFSET, pkmn.language);
     DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_MISC_FLAGS_OFFSET, pkmn.miscFlags);
-    
-    // Write OT name (7 bytes, with 0xFF terminator followed by 0x00 padding)
+
     std::vector<uint8_t> otNameEncoded = encodeText(pkmn.otName, encoding, GEN3_OT_NAME_LENGTH);
-    
-    // Find actual length
+
     size_t otNameLen = 0;
     for (size_t i = 0; i < otNameEncoded.size(); i++) {
         if (otNameEncoded[i] == 0xFF || otNameEncoded[i] == 0x50) {
@@ -1179,67 +1105,61 @@ void PokemonPartyEditor::writeGen3Pokemon(const PokemonData& pkmn, size_t offset
         }
         otNameLen++;
     }
-    
-    // Write the OT name bytes, then terminator, then zero padding
+
     for (size_t i = 0; i < GEN3_OT_NAME_LENGTH; i++) {
         uint8_t value;
         if (i < otNameLen) {
             value = otNameEncoded[i];
         } else if (i == otNameLen && otNameLen != GEN3_OT_NAME_LENGTH) {
-            value = 0xFF;  // Terminator immediately after name
+            value = 0xFF;
         } else {
-            value = 0x00;  // Zero padding after terminator
+            value = 0x00;
         }
         DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_OT_NAME_OFFSET + i, value);
     }
-    
+
     DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_MARKINGS_OFFSET, pkmn.markings);
-    
-    // Build substructure data
-    Generation3Utils::Gen3SubstructureData subData;
+
+    Generation3Utils::Gen3SubstructureData subData{};
     subData.species = pkmn.speciesGen3;
     subData.heldItem = pkmn.heldItemGen3;
     subData.experience = pkmn.exp;
     subData.ppBonuses = pkmn.ppBonuses;
     subData.friendship = pkmn.friendship;
-    
+
     for (int i = 0; i < 4; i++) {
         subData.moves[i] = pkmn.movesGen3[i];
         subData.pp[i] = pkmn.ppValues[i];
     }
-    
+
     subData.hpEV = static_cast<uint8_t>(pkmn.hpEV);
     subData.attackEV = static_cast<uint8_t>(pkmn.attackEV);
     subData.defenseEV = static_cast<uint8_t>(pkmn.defenseEV);
     subData.speedEV = static_cast<uint8_t>(pkmn.speedEV);
     subData.spAtkEV = pkmn.spAtkEV;
     subData.spDefEV = pkmn.spDefEV;
-    
+
     subData.coolness = pkmn.coolness;
     subData.beauty = pkmn.beauty;
     subData.cuteness = pkmn.cuteness;
     subData.smartness = pkmn.smartness;
     subData.toughness = pkmn.toughness;
     subData.feel = pkmn.feel;
-    
+
     subData.pokerus = pkmn.pokerus;
     subData.metLocation = pkmn.metLocation;
     subData.originsInfo = pkmn.originsInfo;
     subData.ivsEggAbility = pkmn.ivsEggAbility;
     subData.ribbonsObedience = pkmn.ribbonsObedience;
-    
-    // Build and encrypt the 48-byte data section
+
     std::array<uint8_t, 48> plainData = Generation3Utils::buildSubstructureData(subData, pkmn.personalityValue);
-    
-    // Calculate and write checksum
+
     uint16_t checksum = Generation3Utils::calculatePokemonDataChecksum(plainData);
     DataUtils::writeU16LE(fileBuffer, offset + Generation3Utils::POKEMON_CHECKSUM_OFFSET, checksum);
-    DataUtils::writeU16LE(fileBuffer, offset + 0x1E, 0); // Unknown/padding
-    
-    // Encrypt and write data
+    DataUtils::writeU16LE(fileBuffer, offset + 0x1E, 0);
+
     Generation3Utils::encryptPokemonData(fileBuffer, offset, plainData);
-    
-    // Write party-only data
+
     DataUtils::writeU32LE(fileBuffer, offset + Generation3Utils::POKEMON_STATUS_OFFSET, pkmn.statusCondition);
     DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_LEVEL_OFFSET, pkmn.level);
     DataUtils::writeU8(fileBuffer, offset + Generation3Utils::POKEMON_MAIL_ID_OFFSET, pkmn.mailId);
@@ -1260,12 +1180,12 @@ std::string PokemonPartyEditor::getPokemonTabName(int index) const {
     if (index >= static_cast<int>(partyCount) || partyPokemon[index].isEmpty()) {
         return "(Empty)";
     }
-    
+
     if (generation == 3) {
         const char* name = PokemonIndex::getPokemonName(partyPokemon[index].speciesGen3, generation);
         return name ? name : "???";
     }
-    
+
     const char* name = PokemonIndex::getPokemonName(static_cast<uint16_t>(partyPokemon[index].species), generation);
     return name ? name : "???";
 }
@@ -1301,21 +1221,16 @@ const char* PokemonPartyEditor::getFieldName(EditField field) const {
         case EditField::SPECIAL_EV: return generation == 1 ? "Special EV" : "Special EV (both)";
         case EditField::SP_ATK_EV: return "Sp. Atk EV";
         case EditField::SP_DEF_EV: return "Sp. Def EV";
-
-        // Gen 1/2 DVs
         case EditField::DV_ATTACK: return "Attack DV";
         case EditField::DV_DEFENSE: return "Defense DV";
         case EditField::DV_SPEED: return "Speed DV";
         case EditField::DV_SPECIAL: return "Special DV";
         case EditField::DV_HP: return "HP DV";
-
         case EditField::FRIENDSHIP: return "Friendship";
         case EditField::POKERUS: return "Pokerus";
         case EditField::NICKNAME: return "Nickname";
         case EditField::OT_NAME: return "OT Name";
         case EditField::EXP: return "Experience";
-        
-        // Gen 3 specific
         case EditField::PID_DISPLAY: return "Personality Value";
         case EditField::SUBSTRUCTURE_ORDER: return "Data Order";
         case EditField::NATURE: return "Nature";
@@ -1343,13 +1258,11 @@ const char* PokemonPartyEditor::getFieldName(EditField field) const {
         case EditField::TOUGHNESS: return "Toughness";
         case EditField::FEEL: return "Feel";
         case EditField::RIBBONS_DISPLAY: return "Ribbons";
-        
         default: return "Unknown";
     }
 }
 
 bool PokemonPartyEditor::isFieldVisible(EditField field) const {
-    // Gen 1 only fields
     if (generation == 1) {
         if (field == EditField::HELD_ITEM || field == EditField::SPECIAL_ATK ||
             field == EditField::SPECIAL_DEF || field == EditField::FRIENDSHIP ||
@@ -1357,56 +1270,50 @@ bool PokemonPartyEditor::isFieldVisible(EditField field) const {
             field == EditField::SP_DEF_EV) {
             return false;
         }
-        // Hide all Gen 3 specific fields
         if (field >= EditField::PID_DISPLAY && field <= EditField::RIBBONS_DISPLAY) {
             return false;
         }
     }
-    
-    // Gen 2 fields
+
     if (generation == 2) {
-        if (field == EditField::TYPE1 || field == EditField::TYPE2 || 
+        if (field == EditField::TYPE1 || field == EditField::TYPE2 ||
             field == EditField::SPECIAL || field == EditField::SP_ATK_EV ||
             field == EditField::SP_DEF_EV) {
             return false;
         }
-        // Hide all Gen 3 specific fields
         if (field >= EditField::PID_DISPLAY && field <= EditField::RIBBONS_DISPLAY) {
             return false;
         }
     }
-    
-    // Gen 3 fields
+
     if (generation == 3) {
-        // Hide Gen 1/2 only fields
         if (field == EditField::TYPE1 || field == EditField::TYPE2 ||
             field == EditField::SPECIAL || field == EditField::SPECIAL_EV) {
             return false;
         }
-        // Hide Gen 1/2 DV fields (Gen 3 uses IVs instead)
         if (field == EditField::DV_ATTACK || field == EditField::DV_DEFENSE ||
             field == EditField::DV_SPEED || field == EditField::DV_SPECIAL ||
             field == EditField::DV_HP) {
             return false;
         }
     }
-    
+
     return true;
 }
 
 std::string PokemonPartyEditor::getFieldValue(int pokemonIndex, EditField field) const {
     if (pokemonIndex < 0 || static_cast<size_t>(pokemonIndex) >= MAX_PARTY_SIZE) return "";
-    
+
     if (!isFieldVisible(field)) return "";
-    
+
     const PokemonData& pkmn = partyPokemon[pokemonIndex];
-    
+
     if (pkmn.isEmpty() && field != EditField::SPECIES) {
         return "-";
     }
-    
+
     std::stringstream ss;
-    
+
     switch (field) {
         case EditField::SPECIES: {
             if (generation == 3) {
@@ -1552,8 +1459,6 @@ std::string PokemonPartyEditor::getFieldValue(int pokemonIndex, EditField field)
         case EditField::EXP:
             ss << pkmn.exp;
             break;
-            
-        // Gen 3 specific fields
         case EditField::PID_DISPLAY:
             ss << HexUtils::toHexString(pkmn.personalityValue, 8) << " (not editable)";
             break;
@@ -1649,20 +1554,17 @@ std::string PokemonPartyEditor::getFieldValue(int pokemonIndex, EditField field)
         case EditField::RIBBONS_DISPLAY:
             ss << HexUtils::toHexString(pkmn.ribbonsObedience, 8);
             break;
-            
         default:
             break;
     }
-    
+
     return ss.str();
 }
 
 bool PokemonPartyEditor::isFieldEditable(EditField field) const {
-    // PID and substructure order are display-only
     if (field == EditField::PID_DISPLAY || field == EditField::SUBSTRUCTURE_ORDER) {
         return false;
     }
-    // HP DV is derived from other DVs and cannot be edited directly
     if (field == EditField::DV_HP) {
         return false;
     }
@@ -1725,168 +1627,72 @@ const char* PokemonPartyEditor::getItemNameGen3(uint16_t item) const {
 }
 
 // ============================================================================
-// Name lookup helpers
+// Unified name lookup
 // ============================================================================
 
-uint8_t PokemonPartyEditor::lookupPokemonIdByName(const std::string& name) const {
+uint16_t PokemonPartyEditor::lookupIdByName(LookupType type, const std::string& name) const {
     std::string query = name;
     std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
         return static_cast<char>(std::toupper(c));
     });
-    
-    const std::unordered_map<uint8_t, PokemonIndex::PokemonInfo>* pokemonMap = nullptr;
-    
-    if (generation == 1) {
-        pokemonMap = &PokemonIndex::GEN1_POKEMON;
-    } else if (generation == 2) {
-        pokemonMap = &PokemonIndex::GEN2_POKEMON;
-    } else {
-        return 0;
-    }
-    
-    for (const auto& kv : *pokemonMap) {
-        const char* pokemonName = kv.second.name;
-        if (!pokemonName) continue;
-        
-        std::string nameStr(pokemonName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        
-        if (nameStr == query) {
-            return kv.first;
-        }
-    }
-    
-    return 0;
-}
 
-uint16_t PokemonPartyEditor::lookupPokemonIdByNameGen3(const std::string& name) const {
-    std::string query = name;
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    
-    for (const auto& kv : PokemonIndex::GEN3_POKEMON) {
-        const char* pokemonName = kv.second.name;
-        if (!pokemonName) continue;
-        
-        std::string nameStr(pokemonName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
+    auto matches = [&query](const char* candidate) -> bool {
+        if (!candidate) return false;
+        std::string s(candidate);
+        std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
             return static_cast<char>(std::toupper(c));
         });
-        
-        if (nameStr == query) {
-            return kv.first;
-        }
-    }
-    
-    return 0;
-}
+        return s == query;
+    };
 
-uint8_t PokemonPartyEditor::lookupMoveIdByName(const std::string& name) const {
-    std::string query = name;
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    
-    const std::unordered_map<uint8_t, const char*>* moveMap = nullptr;
-    
-    if (generation == 1) {
-        moveMap = &PokemonMoves::GEN1_MOVES;
-    } else if (generation == 2) {
-        moveMap = &PokemonMoves::GEN2_MOVES;
-    } else {
-        return 0;
-    }
-    
-    for (const auto& kv : *moveMap) {
-        const char* moveName = kv.second;
-        if (!moveName) continue;
-        
-        std::string nameStr(moveName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        
-        if (nameStr == query) {
-            return kv.first;
+    switch (type) {
+        case LookupType::POKEMON: {
+            if (generation == 3) {
+                for (const auto& kv : PokemonIndex::GEN3_POKEMON) {
+                    if (matches(kv.second.name)) return kv.first;
+                }
+            } else if (generation == 1) {
+                for (const auto& kv : PokemonIndex::GEN1_POKEMON) {
+                    if (matches(kv.second.name)) return kv.first;
+                }
+            } else if (generation == 2) {
+                for (const auto& kv : PokemonIndex::GEN2_POKEMON) {
+                    if (matches(kv.second.name)) return kv.first;
+                }
+            }
+            break;
+        }
+        case LookupType::MOVE: {
+            if (generation == 3) {
+                for (const auto& kv : PokemonMoves::GEN3_MOVES) {
+                    if (matches(kv.second)) return kv.first;
+                }
+            } else if (generation == 1) {
+                for (const auto& kv : PokemonMoves::GEN1_MOVES) {
+                    if (matches(kv.second)) return kv.first;
+                }
+            } else if (generation == 2) {
+                for (const auto& kv : PokemonMoves::GEN2_MOVES) {
+                    if (matches(kv.second)) return kv.first;
+                }
+            }
+            break;
+        }
+        case LookupType::ITEM: {
+            if (generation == 3) {
+                for (const auto& kv : ItemsIndex::GEN3_ITEMS) {
+                    if (matches(ItemsIndex::getGen3ItemName(kv.first))) return kv.first;
+                }
+            } else if (generation == 2) {
+                bool isCrystal = (gameType == GameType::GEN2_CRYSTAL);
+                for (const auto& kv : ItemsIndex::GEN2_ITEMS) {
+                    if (matches(ItemsIndex::getGen2ItemName(kv.first, isCrystal))) return kv.first;
+                }
+            }
+            break;
         }
     }
-    
-    return 0;
-}
 
-uint16_t PokemonPartyEditor::lookupMoveIdByNameGen3(const std::string& name) const {
-    std::string query = name;
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    
-    for (const auto& kv : PokemonMoves::GEN3_MOVES) {
-        const char* moveName = kv.second;
-        if (!moveName) continue;
-        
-        std::string nameStr(moveName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        
-        if (nameStr == query) {
-            return kv.first;
-        }
-    }
-    
-    return 0;
-}
-
-uint8_t PokemonPartyEditor::lookupItemIdByName(const std::string& name) const {
-    if (generation != 2) return 0;
-    
-    std::string query = name;
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    
-    bool isCrystal = (gameType == GameType::GEN2_CRYSTAL);
-    
-    for (const auto& kv : ItemsIndex::GEN2_ITEMS) {
-        const char* itemName = ItemsIndex::getGen2ItemName(kv.first, isCrystal);
-        if (!itemName) continue;
-        
-        std::string nameStr(itemName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        
-        if (nameStr == query) {
-            return kv.first;
-        }
-    }
-    
-    return 0;
-}
-
-uint16_t PokemonPartyEditor::lookupItemIdByNameGen3(const std::string& name) const {
-    std::string query = name;
-    std::transform(query.begin(), query.end(), query.begin(), [](unsigned char c) {
-        return static_cast<char>(std::toupper(c));
-    });
-    
-    for (const auto& kv : ItemsIndex::GEN3_ITEMS) {
-        const char* itemName = ItemsIndex::getGen3ItemName(kv.first);
-        if (!itemName) continue;
-        
-        std::string nameStr(itemName);
-        std::transform(nameStr.begin(), nameStr.end(), nameStr.begin(), [](unsigned char c) {
-            return static_cast<char>(std::toupper(c));
-        });
-        
-        if (nameStr == query) {
-            return kv.first;
-        }
-    }
-    
     return 0;
 }
 
@@ -1908,7 +1714,7 @@ uint8_t PokemonPartyEditor::getIV(uint16_t ivData, const std::string& stat) cons
         uint8_t defenseIV = (ivData >> 8) & 0x0F;
         uint8_t speedIV = (ivData >> 4) & 0x0F;
         uint8_t specialIV = ivData & 0x0F;
-        return ((attackIV & 1) << 3) | ((defenseIV & 1) << 2) | 
+        return ((attackIV & 1) << 3) | ((defenseIV & 1) << 2) |
                ((speedIV & 1) << 1) | (specialIV & 1);
     }
     return 0;
@@ -1916,7 +1722,7 @@ uint8_t PokemonPartyEditor::getIV(uint16_t ivData, const std::string& stat) cons
 
 uint16_t PokemonPartyEditor::setIV(uint16_t ivData, const std::string& stat, uint8_t value) const {
     value &= 0x0F;
-    
+
     if (stat == "attack") {
         return (ivData & 0x0FFF) | (static_cast<uint16_t>(value) << 12);
     } else if (stat == "defense") {
@@ -1926,7 +1732,7 @@ uint16_t PokemonPartyEditor::setIV(uint16_t ivData, const std::string& stat, uin
     } else if (stat == "special") {
         return (ivData & 0xFFF0) | value;
     }
-    
+
     return ivData;
 }
 
@@ -1936,7 +1742,7 @@ uint16_t PokemonPartyEditor::setIV(uint16_t ivData, const std::string& stat, uin
 
 void PokemonPartyEditor::startEditing(EditField field, bool byName) {
     if (!isFieldEditable(field)) return;
-    
+
     editing = true;
     editingByName = byName && isNameEditableField(field);
     selectedField = static_cast<int>(field);
@@ -1953,17 +1759,17 @@ void PokemonPartyEditor::cancelEditAndRedraw() {
 
 void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
     if (!editing) return;
-    
+
     if (key == SDLK_ESCAPE) {
         cancelEditAndRedraw();
         return;
     }
-    
+
     if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
         commitEdit();
         return;
     }
-    
+
     if (key == SDLK_BACKSPACE) {
         if (!editBuffer.empty()) {
             editBuffer.pop_back();
@@ -1971,10 +1777,9 @@ void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
         }
         return;
     }
-    
+
     EditField field = static_cast<EditField>(selectedField);
-    
-    // Handle text input for names (including NATURE when editing by name)
+
     if (field == EditField::NICKNAME || field == EditField::OT_NAME || editingByName) {
         char c = 0;
         if (key >= SDLK_A && key <= SDLK_Z) {
@@ -1992,24 +1797,22 @@ void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
         } else {
             return;
         }
-        
+
         size_t maxChars = getMaxNameChars();
-        if ((field == EditField::NICKNAME || field == EditField::OT_NAME) && 
+        if ((field == EditField::NICKNAME || field == EditField::OT_NAME) &&
             editBuffer.length() >= maxChars) {
             return;
         }
-        
+
         editBuffer.push_back(c);
         requestRedraw();
         return;
     }
-    
-    // Handle numeric input for NATURE (when not editing by name)
+
     if (field == EditField::NATURE) {
         char c = 0;
         if (key >= SDLK_0 && key <= SDLK_9) {
             c = static_cast<char>('0' + (key - SDLK_0));
-            // Limit to 2 digits (0-24)
             if (editBuffer.length() < 2) {
                 editBuffer.push_back(c);
                 requestRedraw();
@@ -2018,13 +1821,11 @@ void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
         return;
     }
 
-    // Handle numeric input for DV fields (0-15, so limit to 2 digits)
     if (field == EditField::DV_ATTACK || field == EditField::DV_DEFENSE ||
         field == EditField::DV_SPEED || field == EditField::DV_SPECIAL) {
         char c = 0;
         if (key >= SDLK_0 && key <= SDLK_9) {
             c = static_cast<char>('0' + (key - SDLK_0));
-            // Limit to 2 digits (0-15)
             if (editBuffer.length() < 2) {
                 editBuffer.push_back(c);
                 requestRedraw();
@@ -2032,14 +1833,11 @@ void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
         }
         return;
     }
-       
-    
-    // Handle numeric/hex input for other fields
+
     char c = 0;
     if (key >= SDLK_0 && key <= SDLK_9) {
         c = static_cast<char>('0' + (key - SDLK_0));
     } else if (key >= SDLK_A && key <= SDLK_F) {
-        // Allow hex input for appropriate fields
         bool allowHex = (field == EditField::SPECIES || field == EditField::STATUS ||
                          field == EditField::TYPE1 || field == EditField::TYPE2 ||
                          field == EditField::MOVE1 || field == EditField::MOVE2 ||
@@ -2055,70 +1853,42 @@ void PokemonPartyEditor::handleEditInput(SDL_Keycode key) {
     } else {
         return;
     }
-    
+
     editBuffer.push_back(c);
     requestRedraw();
 }
 
 void PokemonPartyEditor::commitEdit() {
     if (!editing) return;
-    
+
     EditField field = static_cast<EditField>(selectedField);
 
     auto cancel = [&] {
         cancelEditAndRedraw();
         return;
     };
-    
-    // Handle name-based editing
+
     if (editingByName && !editBuffer.empty()) {
         if (field == EditField::SPECIES) {
-            if (generation == 3) {
-                uint16_t id = lookupPokemonIdByNameGen3(editBuffer);
-                if (id != 0) {
-                    editBuffer = HexUtils::toHexString(id, 4);
-                } else {
-                    return cancel();
-                }
+            uint16_t id = lookupIdByName(LookupType::POKEMON, editBuffer);
+            if (id != 0) {
+                editBuffer = HexUtils::toHexString(id, generation == 3 ? 4 : 2);
             } else {
-                uint8_t id = lookupPokemonIdByName(editBuffer);
-                if (id != 0) {
-                    editBuffer = HexUtils::toHexString(id, 2);
-                } else {
-                    return cancel();
-                }
+                return cancel();
             }
         } else if (field >= EditField::MOVE1 && field <= EditField::MOVE4) {
-            if (generation == 3) {
-                uint16_t id = lookupMoveIdByNameGen3(editBuffer);
-                if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
-                    editBuffer = HexUtils::toHexString(id, 4);
-                } else {
-                    return cancel();
-                }
+            uint16_t id = lookupIdByName(LookupType::MOVE, editBuffer);
+            if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
+                editBuffer = HexUtils::toHexString(id, generation == 3 ? 4 : 2);
             } else {
-                uint8_t id = lookupMoveIdByName(editBuffer);
-                if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
-                    editBuffer = HexUtils::toHexString(id, 2);
-                } else {
-                    return cancel();
-                }
+                return cancel();
             }
         } else if (field == EditField::HELD_ITEM) {
-            if (generation == 3) {
-                uint16_t id = lookupItemIdByNameGen3(editBuffer);
-                if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
-                    editBuffer = HexUtils::toHexString(id, 4);
-                } else {
-                    return cancel();
-                }
-            } else if (generation >= 2) {
-                uint8_t id = lookupItemIdByName(editBuffer);
-                if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
-                    editBuffer = HexUtils::toHexString(id, 2);
-                } else {
-                    return cancel();
-                }
+            uint16_t id = lookupIdByName(LookupType::ITEM, editBuffer);
+            if (id != 0 || editBuffer == "-" || editBuffer == "NONE") {
+                editBuffer = HexUtils::toHexString(id, generation == 3 ? 4 : 2);
+            } else {
+                return cancel();
             }
         } else if (field == EditField::NATURE && generation == 3) {
             uint8_t natureId = Generation3Utils::lookupNatureByName(editBuffer);
@@ -2129,67 +1899,92 @@ void PokemonPartyEditor::commitEdit() {
             }
         }
     }
-    
-    // Special handling for NATURE field - show confirmation dialog if nature changed
+
     if (field == EditField::NATURE && generation == 3) {
         PokemonData& pkmn = partyPokemon[currentPokemonIndex];
         uint8_t currentNature = Generation3Utils::getNatureFromPID(pkmn.personalityValue);
-        
+
         uint8_t newNature;
         try {
             newNature = static_cast<uint8_t>(std::stoul(editBuffer));
         } catch (...) {
             return cancel();
         }
-        
+
         if (newNature >= 25) {
             return cancel();
         }
-        
-        // Only show dialog if nature is actually changing
+
         if (newNature != currentNature) {
             if (!showOverwriteSensitiveDataConfirmDialog()) {
-                // User cancelled - revert
                 return cancel();
             }
-            
-            // User confirmed - apply the change
+
             pkmn.personalityValue = Generation3Utils::calculatePIDForNature(pkmn.personalityValue, newNature);
             hasUnsavedChanges = true;
         }
-        
+
         return cancel();
     }
-    
+
     if (validateAndApplyEdit(currentPokemonIndex, field, editBuffer)) {
         hasUnsavedChanges = true;
     }
-    
+
     cancelEditAndRedraw();
 }
 
-bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field, 
+bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                                                const std::string& value) {
     if (pokemonIndex < 0 || static_cast<size_t>(pokemonIndex) >= MAX_PARTY_SIZE) return false;
-    
+
     PokemonData& pkmn = partyPokemon[pokemonIndex];
-    
+
     try {
         switch (field) {
             case EditField::SPECIES: {
                 if (generation == 3) {
                     uint16_t species = static_cast<uint16_t>(std::stoul(value, nullptr, 16));
                     pkmn.speciesGen3 = species;
-                    
+
                     if (species != 0) {
                         pkmn.miscFlags |= Generation3Utils::MISC_FLAG_HAS_SPECIES;
+
+                        if (pkmn.personalityValue == 0) {
+                            std::random_device rd;
+                            std::mt19937 rng(rd());
+                            std::uniform_int_distribution<uint32_t> dist(1, 0xFFFFFFFF);
+                            pkmn.personalityValue = dist(rng);
+                            pkmn.mailId = 0xFF;
+                            if (pkmn.language == 0) {
+                                pkmn.language = 2;
+                            }
+                            if (pkmn.originsInfo == 0) {
+                                uint8_t gameOrigin = 0;
+                                if (gameType == GameType::GEN3_RS) gameOrigin = 2;
+                                else if (gameType == GameType::GEN3_EMERALD) gameOrigin = 3;
+                                else if (gameType == GameType::GEN3_FRLG) gameOrigin = 4;
+                                pkmn.originsInfo = Generation3Utils::setPokeBallCaughtIn(
+                                    pkmn.originsInfo, 4);
+                                pkmn.originsInfo = Generation3Utils::setGameOfOrigin(
+                                    pkmn.originsInfo, gameOrigin);
+                                pkmn.originsInfo = Generation3Utils::setLevelMet(
+                                    pkmn.originsInfo, pkmn.level > 0 ? pkmn.level : 5);
+                            }
+                            std::cout << "Generated PID "
+                                      << HexUtils::toHexString(pkmn.personalityValue, 8)
+                                      << " for new Pokemon (Nature: "
+                                      << Generation3Utils::getNatureNameByIndex(
+                                             Generation3Utils::getNatureFromPID(pkmn.personalityValue))
+                                      << ")" << std::endl;
+                        }
                     } else {
                         pkmn.miscFlags &= ~Generation3Utils::MISC_FLAG_HAS_SPECIES;
                         partyCount = static_cast<uint8_t>(std::count_if(
                             partyPokemon.begin(), partyPokemon.end(),
                             [](const PokemonData& partyPkmn) { return !partyPkmn.isEmpty(); }));
                     }
-                    
+
                     if (species != 0 && pokemonIndex >= partyCount) {
                         partyCount = pokemonIndex + 1;
                     }
@@ -2197,7 +1992,7 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                     uint8_t species = static_cast<uint8_t>(std::stoul(value, nullptr, 16));
                     pkmn.species = species;
                     partySpecies[pokemonIndex] = species;
-                    
+
                     if (generation == 1) {
                         const PokemonIndex::PokemonInfo* info = PokemonIndex::getPokemonInfo(species, 1);
                         if (info) {
@@ -2205,7 +2000,7 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                             pkmn.type2 = info->type2;
                         }
                     }
-                    
+
                     if (species == 0 || species == 0xFF) {
                         partyCount = static_cast<uint8_t>(std::count_if(
                             partyPokemon.begin(), partyPokemon.end(),
@@ -2403,16 +2198,12 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
                 break;
             case EditField::EXP: {
                 uint32_t exp = static_cast<uint32_t>(std::stoul(value));
-                if (generation == 3) {
-                    // Gen 3 uses full 32-bit EXP
-                } else {
+                if (generation != 3) {
                     if (exp > 0xFFFFFF) exp = 0xFFFFFF;
                 }
                 pkmn.exp = exp;
                 break;
             }
-            
-            // Gen 3 specific fields
             case EditField::OT_ID:
                 if (generation == 3) {
                     pkmn.otIdFull = static_cast<uint32_t>(std::stoul(value, nullptr, 16));
@@ -2421,7 +2212,7 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
             case EditField::LANGUAGE:
                 if (generation == 3) {
                     pkmn.language = static_cast<uint8_t>(std::stoul(value));
-                    if (pkmn.language > 7) pkmn.language = 2; // Default to English
+                    if (pkmn.language > 7) pkmn.language = 2;
                 }
                 break;
             case EditField::MISC_FLAGS:
@@ -2515,7 +2306,7 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
             case EditField::POKEBALL:
                 if (generation == 3) {
                     uint8_t ball = static_cast<uint8_t>(std::stoul(value));
-                    if (ball > 15) ball = 4; // Default to Poke Ball
+                    if (ball > 15) ball = 4;
                     pkmn.originsInfo = Generation3Utils::setPokeBallCaughtIn(pkmn.originsInfo, ball);
                 }
                 break;
@@ -2563,13 +2354,12 @@ bool PokemonPartyEditor::validateAndApplyEdit(int pokemonIndex, EditField field,
             default:
                 return false;
         }
-        
+
         return true;
     } catch (...) {
         return false;
     }
 }
-
 
 // ============================================================================
 // Checksum
@@ -2587,33 +2377,33 @@ void PokemonPartyEditor::updateChecksum() {
 
 void PokemonPartyEditor::updateChecksumGen1() {
     Generation1Utils::ChecksumConfig config = Generation1Utils::getRedBlueYellowConfig(isJapanese);
-    
+
     if (config.end >= fileSize || config.checksumLocation >= fileSize) return;
-    
+
     uint8_t checksum = Generation1Utils::calculate8BitChecksum(fileBuffer, config.start, config.end);
     DataUtils::writeU8(fileBuffer, config.checksumLocation, checksum);
 }
 
 void PokemonPartyEditor::updateChecksumGen2() {
     bool crystal = (gameType == GameType::GEN2_CRYSTAL);
-    
+
     Generation2Utils::ChecksumConfig config;
     if (crystal) {
         config = Generation2Utils::getCrystalConfig(isJapanese);
     } else {
         config = Generation2Utils::getGoldSilverConfig(isJapanese);
     }
-    
+
     uint16_t checksum1 = Generation2Utils::calculate16BitChecksum(
         fileBuffer, config.start1, config.end1);
-    
+
     if (config.checksumLocation1 + 1 < fileSize) {
         DataUtils::writeU16LE(fileBuffer, config.checksumLocation1, checksum1);
     }
-    
+
     uint16_t checksum2 = Generation2Utils::calculate16BitChecksumMultiRange(
         fileBuffer, config.ranges2);
-    
+
     if (config.checksumLocation2 + 1 < fileSize) {
         DataUtils::writeU16LE(fileBuffer, config.checksumLocation2, checksum2);
     }
@@ -2621,8 +2411,7 @@ void PokemonPartyEditor::updateChecksumGen2() {
 
 void PokemonPartyEditor::updateChecksumGen3() {
     if (!activeGen3Block) return;
-    
-    // Update Section 1 checksum (where party data is stored)
+
     size_t section1DataSize = Generation3Utils::GEN3_SECTION_SIZES[1];
     Generation3Utils::updateSectionChecksum(fileBuffer, gen3Section1Offset, section1DataSize);
 }
@@ -2649,7 +2438,7 @@ bool PokemonPartyEditor::saveFile() {
     writePokemonDataToBuffer();
     updatePokedexForNewPokemon();
     updateChecksum();
-    
+
     if (!overwriteMode) {
 #ifdef _WIN32
         _mkdir("edited_files");
@@ -2657,9 +2446,9 @@ bool PokemonPartyEditor::saveFile() {
         mkdir("edited_files", 0755);
 #endif
     }
-    
+
     std::string outPath = getOutputPath();
-    
+
     if (fileExists(outPath)) {
         std::string displayName = HexUtils::getBaseName(outPath);
         if (!showOverwriteConfirmDialog(displayName)) {
@@ -2667,7 +2456,7 @@ bool PokemonPartyEditor::saveFile() {
             return false;
         }
     }
-    
+
     std::ofstream outFile(outPath, std::ios::binary);
     if (!outFile) {
         std::cerr << "Failed to save: " << outPath << std::endl;
@@ -2675,8 +2464,7 @@ bool PokemonPartyEditor::saveFile() {
     }
     outFile.write(fileBuffer.data(), static_cast<std::streamsize>(fileSize));
     outFile.close();
-    
-    // Update original species tracking after successful save
+
     for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
         if (generation == 3) {
             originalPartySpeciesGen3[i] = partyPokemon[i].speciesGen3;
@@ -2684,7 +2472,7 @@ bool PokemonPartyEditor::saveFile() {
             originalPartySpecies[i] = partyPokemon[i].species;
         }
     }
-    
+
     hasUnsavedChanges = false;
     setConfirmOnQuit(false);
     std::cout << "Saved to: " << outPath << std::endl;
@@ -2696,7 +2484,7 @@ bool PokemonPartyEditor::saveFile() {
 // ============================================================================
 
 void PokemonPartyEditor::render() {
-   SDL_SetRenderDrawColor(renderer, colors.background.r, colors.background.g, 
+   SDL_SetRenderDrawColor(renderer, colors.background.r, colors.background.g,
                           colors.background.b, 255);
    SDL_RenderClear(renderer);
 
@@ -2715,7 +2503,7 @@ void PokemonPartyEditor::render() {
    if (hasUnsavedChanges) {
        ss << " [MODIFIED]";
    }
-   
+
    SDL_Color headerColor = colors.text;
    if (overwriteMode) {
        headerColor = colors.warning;
@@ -2724,17 +2512,16 @@ void PokemonPartyEditor::render() {
    }
    renderText(ss.str(), 10, 5, headerColor);
 
-   // Render Pokemon tabs
    std::stringstream ps;
    ps << "Pokemon: ";
    for (size_t i = 0; i < MAX_PARTY_SIZE; i++) {
        if (i > 0) ps << " | ";
-       
+
        SDL_Color tabColor = colors.text;
        if (i >= partyCount) {
            tabColor = colors.textDim;
        }
-       
+
        if (static_cast<int>(i) == currentPokemonIndex) {
            ps << '[' << getPokemonTabName(static_cast<int>(i)) << ']';
        } else {
@@ -2743,12 +2530,11 @@ void PokemonPartyEditor::render() {
    }
    renderText(ps.str(), 10, 5 + charHeight, colors.text);
 
-   // Save button
    int rightX = windowWidth - 10;
    int btnW = 80;
    int btnH = charHeight + 6;
    saveButtonRect = {rightX - btnW, 10, btnW, btnH};
-   
+
    if (saveButtonHovered) {
        SDL_Rect hoverRect = {saveButtonRect.x - 1, saveButtonRect.y - 1,
                              saveButtonRect.w + 2, saveButtonRect.h + 2};
@@ -2761,7 +2547,6 @@ void PokemonPartyEditor::render() {
 
    renderLine(0, headerH - 1, windowWidth, headerH - 1, {60, 60, 60, 255});
 
-   // Count visible fields and build mapping
    std::vector<EditField> visibleFields;
    std::unordered_map<int, size_t> fieldToVisibleIndex;
    for (int i = 0; i < static_cast<int>(EditField::FIELD_COUNT); i++) {
@@ -2772,57 +2557,52 @@ void PokemonPartyEditor::render() {
        }
    }
 
-   // Render Pokemon data fields
    int startY = headerH + 10;
    int rowH = charHeight + 4;
    int fieldCount = static_cast<int>(visibleFields.size());
-   
-   // Calculate scrollbar
+
    int instructionsH = charHeight * 3 + 10;
    int availableH = windowHeight - headerH - instructionsH - 20;
    size_t visibleRows = (availableH > 0) ? (static_cast<size_t>(availableH) / rowH) : 1;
    if (visibleRows == 0) visibleRows = 1;
-   
+
    scrollbar.headerOffset = headerH;
    scrollbar.visibleItems = visibleRows;
    scrollbar.totalItems = fieldCount;
-   
+
    if (scrollbar.offset > scrollbar.maxOffset()) {
        scrollbar.offset = scrollbar.maxOffset();
    }
-   
+
    int rowWidth = windowWidth - 20;
    if (scrollbar.canScroll()) {
        rowWidth -= scrollbar.width;
    }
-   
+
    size_t startIndex = scrollbar.offset;
-   size_t endIndex = std::min(startIndex + scrollbar.visibleItems, 
+   size_t endIndex = std::min(startIndex + scrollbar.visibleItems,
                               static_cast<size_t>(fieldCount));
-   
+
    for (size_t idx = startIndex; idx < endIndex; idx++) {
        size_t local = idx - startIndex;
        int y = startY + static_cast<int>(local) * rowH;
        SDL_Rect rowRect = {10, y, rowWidth, rowH - 2};
-       
+
        EditField field = visibleFields[idx];
-       
+
        if (static_cast<int>(field) == selectedField) {
            renderFilledRect(rowRect, colors.selectedBg);
        }
-       
+
        std::string fieldName = getFieldName(field);
        std::string fieldValue = getFieldValue(currentPokemonIndex, field);
-       
-       // Mark non-editable fields
+
        if (!isFieldEditable(field)) {
            fieldName += " (view)";
        }
-       
-       // Field name
+
        renderText(fieldName + ":", rowRect.x + 5, y + 2, colors.text);
-       
-       // Field value
+
        int valueX = rowRect.x + 220;
        if (editing && static_cast<int>(field) == selectedField) {
            std::string editText = editBuffer;
@@ -2838,10 +2618,10 @@ void PokemonPartyEditor::render() {
                    valueColor = colors.textDim;
                }
            }
-           
-           if (isJapanese && japaneseFont && 
-               (field == EditField::NICKNAME || field == EditField::OT_NAME || 
-               field == EditField::SPECIES || 
+
+           if (isJapanese && japaneseFont &&
+               (field == EditField::NICKNAME || field == EditField::OT_NAME ||
+               field == EditField::SPECIES ||
                (field >= EditField::MOVE1 && field <= EditField::MOVE4))) {
                renderMixedText(fieldValue, valueX, y + 2, valueColor);
            } else {
@@ -2849,19 +2629,19 @@ void PokemonPartyEditor::render() {
            }
        }
    }
-   
+
    if (scrollbar.canScroll()) {
        renderScrollbar();
    }
-   
-   // Instructions
+
    int instrY = startY + static_cast<int>(visibleRows) * rowH + 10;
-   renderText("Up/Down: Select Field  Left/Right: Switch Pokemon  Enter: Edit  Ctrl/Cmd+S: Save", 
+   renderText("Up/Down: Select Field  Left/Right: Switch Pokemon  Enter: Edit  Ctrl/Cmd+S: Save",
               10, instrY, colors.textDim);
-   std::string itemInstr = (generation >= 2) ? "I: Type name for Species/Moves/Items  Q/Esc: Quit" :
-                                                "I: Type name for Species/Moves  Q/Esc: Quit";
+   std::string itemInstr = (generation >= 2)
+       ? "I: Type name for Species/Moves/Items  +/-: PP Ups  Q/Esc: Quit"
+       : "I: Type name for Species/Moves  +/-: PP Ups  Q/Esc: Quit";
    renderText(itemInstr, 10, instrY + charHeight, colors.textDim);
-   
+
    SDL_RenderPresent(renderer);
 }
 
@@ -2870,7 +2650,6 @@ void PokemonPartyEditor::render() {
 // ============================================================================
 
 void PokemonPartyEditor::adjustScrollbarForSelectedField() {
-    // Build list of visible fields
     std::vector<EditField> visibleFields;
     for (int i = 0; i < static_cast<int>(EditField::FIELD_COUNT); i++) {
         EditField field = static_cast<EditField>(i);
@@ -2878,16 +2657,12 @@ void PokemonPartyEditor::adjustScrollbarForSelectedField() {
             visibleFields.push_back(field);
         }
     }
-    
-    // Find the visible index of the selected field
+
     for (size_t i = 0; i < visibleFields.size(); i++) {
         if (static_cast<int>(visibleFields[i]) == selectedField) {
-            // Adjust scrollbar if necessary
             if (i < scrollbar.offset) {
-                // Selected field is above visible area - scroll up
                 scrollbar.offset = i;
             } else if (i >= scrollbar.offset + scrollbar.visibleItems) {
-                // Selected field is below visible area - scroll down
                 if (scrollbar.visibleItems > 0) {
                     scrollbar.offset = i - scrollbar.visibleItems + 1;
                 }
@@ -2902,13 +2677,13 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
         case SDL_EVENT_MOUSE_MOTION: {
             int mx = static_cast<int>(event.motion.x);
             int my = static_cast<int>(event.motion.y);
-            
+
             if (scrollbar.dragging) {
                 handleScrollbarDrag(my);
                 requestRedraw();
                 break;
             }
-            
+
             bool hover = (mx >= saveButtonRect.x && mx < saveButtonRect.x + saveButtonRect.w &&
                           my >= saveButtonRect.y && my < saveButtonRect.y + saveButtonRect.h);
             if (hover != saveButtonHovered) {
@@ -2921,27 +2696,26 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
             if (event.button.button == SDL_BUTTON_LEFT) {
                 int mx = static_cast<int>(event.button.x);
                 int my = static_cast<int>(event.button.y);
-                
+
                 if (mx >= saveButtonRect.x && mx < saveButtonRect.x + saveButtonRect.w &&
                     my >= saveButtonRect.y && my < saveButtonRect.y + saveButtonRect.h) {
                     saveFile();
                     break;
                 }
-                
+
                 if (handleScrollbarClick(mx, my)) {
                     break;
                 }
-                
+
                 int headerH = charHeight * 2 + 10;
                 int rowH = charHeight + 4;
                 int startY = headerH + 10;
-                
+
                 if (my >= startY) {
                     int local = (my - startY) / rowH;
                     if (local >= 0 && local < static_cast<int>(scrollbar.visibleItems)) {
                         int idx = static_cast<int>(scrollbar.offset) + local;
-                        
-                        // Map back from visible index to actual field
+
                         std::vector<EditField> visibleFields;
                         for (int i = 0; i < static_cast<int>(EditField::FIELD_COUNT); i++) {
                             EditField field = static_cast<EditField>(i);
@@ -2949,7 +2723,7 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
                                 visibleFields.push_back(field);
                             }
                         }
-                        
+
                         if (idx >= 0 && idx < static_cast<int>(visibleFields.size())) {
                             selectedField = static_cast<int>(visibleFields[idx]);
                             requestRedraw();
@@ -2975,13 +2749,13 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
         }
         case SDL_EVENT_KEY_DOWN: {
             SDL_Keycode key = event.key.key;
-            
-            if (!editing && ((event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) && 
+
+            if (!editing && ((event.key.mod & (SDL_KMOD_CTRL | SDL_KMOD_GUI)) &&
                 key == SDLK_S)) {
                 saveFile();
                 break;
             }
-            
+
             if (editing) {
                 handleEditInput(key);
             } else {
@@ -3002,7 +2776,7 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
                             selectedField = 0;
                         }
                     } while (!isFieldVisible(static_cast<EditField>(selectedField)));
-                    
+
                     adjustScrollbarForSelectedField();
                     requestRedraw();
                 } else if (key == SDLK_LEFT) {
@@ -3023,6 +2797,58 @@ void PokemonPartyEditor::handleEvent(SDL_Event& event) {
                     EditField field = static_cast<EditField>(selectedField);
                     if (isNameEditableField(field)) {
                         startEditing(field, true);
+                    }
+                } else if (key == SDLK_EQUALS || key == SDLK_PLUS || key == SDLK_KP_PLUS) {
+                    EditField field = static_cast<EditField>(selectedField);
+                    if (field >= EditField::PP1 && field <= EditField::PP4) {
+                        int ppIndex = static_cast<int>(field) - static_cast<int>(EditField::PP1);
+                        PokemonData& pkmn = partyPokemon[currentPokemonIndex];
+                        if (!pkmn.isEmpty()) {
+                            if (generation == 3) {
+                                int shift = ppIndex * 2;
+                                int currentUps = (pkmn.ppBonuses >> shift) & 0x03;
+                                if (currentUps < 3) {
+                                    pkmn.ppBonuses = static_cast<uint8_t>(
+                                        (pkmn.ppBonuses & ~(0x03 << shift)) | ((currentUps + 1) << shift));
+                                    hasUnsavedChanges = true;
+                                    requestRedraw();
+                                }
+                            } else {
+                                int currentUps = (pkmn.ppValues[ppIndex] >> 6) & 0x03;
+                                if (currentUps < 3) {
+                                    pkmn.ppValues[ppIndex] = static_cast<uint8_t>(
+                                        (pkmn.ppValues[ppIndex] & 0x3F) | ((currentUps + 1) << 6));
+                                    hasUnsavedChanges = true;
+                                    requestRedraw();
+                                }
+                            }
+                        }
+                    }
+                } else if (key == SDLK_MINUS || key == SDLK_KP_MINUS) {
+                    EditField field = static_cast<EditField>(selectedField);
+                    if (field >= EditField::PP1 && field <= EditField::PP4) {
+                        int ppIndex = static_cast<int>(field) - static_cast<int>(EditField::PP1);
+                        PokemonData& pkmn = partyPokemon[currentPokemonIndex];
+                        if (!pkmn.isEmpty()) {
+                            if (generation == 3) {
+                                int shift = ppIndex * 2;
+                                int currentUps = (pkmn.ppBonuses >> shift) & 0x03;
+                                if (currentUps > 0) {
+                                    pkmn.ppBonuses = static_cast<uint8_t>(
+                                        (pkmn.ppBonuses & ~(0x03 << shift)) | ((currentUps - 1) << shift));
+                                    hasUnsavedChanges = true;
+                                    requestRedraw();
+                                }
+                            } else {
+                                int currentUps = (pkmn.ppValues[ppIndex] >> 6) & 0x03;
+                                if (currentUps > 0) {
+                                    pkmn.ppValues[ppIndex] = static_cast<uint8_t>(
+                                        (pkmn.ppValues[ppIndex] & 0x3F) | ((currentUps - 1) << 6));
+                                    hasUnsavedChanges = true;
+                                    requestRedraw();
+                                }
+                            }
+                        }
                     }
                 } else if (key == SDLK_Q || key == SDLK_ESCAPE) {
                     if (hasUnsavedChanges) {

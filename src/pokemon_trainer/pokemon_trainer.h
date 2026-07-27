@@ -1,7 +1,3 @@
-//=============================================================================
-//  Pokemon Trainer Editor
-//=============================================================================
-
 #ifndef POKEMON_TRAINER_H
 #define POKEMON_TRAINER_H
 
@@ -32,22 +28,22 @@ public:
     };
 
     struct Gen1PokemonInfo {
-        size_t levelOffset{0};    // Offset of the Pokémon's level byte
-        size_t speciesOffset{0};  // Offset of the Pokémon's species byte
+        size_t levelOffset{0};
+        size_t speciesOffset{0};
     };
 
     struct Gen1TrainerData {
-        bool format2{false};                 // True if Format 2 (multiple levels)
-        std::vector<Gen1PokemonInfo> party;  // Per Pokémon level/species offsets
+        bool format2{false};
+        std::vector<Gen1PokemonInfo> party;
     };
 
     struct Gen2PokemonInfo {
-        size_t levelOffset{0};    // File offset of the Pokémon's level byte
-        size_t speciesOffset{0};  // File offset of the species byte
+        size_t levelOffset{0};
+        size_t speciesOffset{0};
         bool hasItem{false};
-        size_t itemOffset{0};     // File offset of the held item byte (if any)
+        size_t itemOffset{0};
         bool hasMoves{false};
-        std::array<size_t,4> moveOffsets{{0,0,0,0}}; // Offsets for the four move bytes (if any)
+        std::array<size_t,4> moveOffsets{{0,0,0,0}};
     };
 
     struct Gen2TrainerData {
@@ -55,64 +51,51 @@ public:
     };
 
     struct Gen3TrainerData {
-        uint8_t flags{0};         // Gender/double battle flags
-        uint8_t sprite{0};        // Sprite ID
-        std::array<uint16_t,4> items{{0,0,0,0}};  // Up to four held items
-        std::array<uint8_t,4> unknown{{0,0,0,0}}; // Unused bytes (0x18-0x1B)
-        uint32_t ai{0};           // AI or intelligence level
-        uint32_t partyPointer{0}; // Raw pointer (Little-endian) into ROM
-        size_t partyOffset{0};    // Calculated file offset (pointer - 0x08000000)
+        uint8_t flags{0};
+        uint8_t sprite{0};
+        std::array<uint16_t,4> items{{0,0,0,0}};
+        std::array<uint8_t,4> unknown{{0,0,0,0}};
+        uint32_t ai{0};
+        uint32_t partyPointer{0};
+        size_t partyOffset{0};
     };
 
-    // Structure representing a single trainer. Common fields live at the
-    // top level, while generation specific storage lives in dedicated blocks.
     struct TrainerEntry {
-        size_t offset{0};         // Location of the trainer record
-        uint8_t type{0};          // Trainer type / structure byte
-        uint8_t classId{0};       // Index into the trainer class name table
-        std::string name;         // Trainer name decoded from ROM text
-        uint32_t partySize{0};    // Number of Pokémon in the party
+        size_t offset{0};
+        uint8_t type{0};
+        uint8_t classId{0};
+        std::string name;
+        uint32_t partySize{0};
         Gen1TrainerData gen1;
         Gen2TrainerData gen2;
         Gen3TrainerData gen3;
     };
 
 private:
-    // =====================================================================
-    // ROM and file state
-    // =====================================================================
-    std::string fileBuffer;       // Entire ROM contents loaded from disk
-    std::string fileName;         // Path passed on the command line
-    size_t fileSize{0};           // Size of fileBuffer in bytes
-    bool overwriteMode{false};    // Whether to overwrite the input file when saving
-    bool hasUnsavedChanges{false}; // Tracks if any edits have been made
+    std::string fileBuffer;
+    std::string fileName;
+    size_t fileSize{0};
+    bool overwriteMode{false};
+    bool hasUnsavedChanges{false};
 
-    // =====================================================================
-    // Game state
-    // =====================================================================
-    std::string gameName;         // Normalized game identifier (ruby, sapphire, etc.)
-    GameType gameType{GameType::UNKNOWN}; // Parsed game enumeration
+    std::string gameName;
+    GameType gameType{GameType::UNKNOWN};
 
-    // =====================================================================
-    // Trainer lists and UI state
-    // =====================================================================
-    std::vector<TrainerEntry> trainers;        // All parsed trainers
-    std::vector<size_t> displayOrder;          // Indices into trainers for current sort/filter
-    std::string searchTerm;                    // Lower-cased search string
-    bool searchMode{false};                    // True when the search box is active
+    std::vector<TrainerEntry> trainers;
+    std::vector<size_t> displayOrder;
+    std::string searchTerm;
+    bool searchMode{false};
     
-    // Sorting mode for the trainer list. Memory preserves the original
-    // order of records in the ROM. Class sorts alphabetically by trainer
-    // class. Name sorts alphabetically by trainer name.
     enum class SortMode { Memory, Class, Name };
-    SortMode sortMode{SortMode::Memory};       // Current sorting mode
-    size_t selectedIndex{0};                   // Index into displayOrder for selected trainer
-    size_t selectedField{0};                   // Field index within the details pane
-    bool viewingDetails{false};                // True when user is editing trainer details
+    SortMode sortMode{SortMode::Memory};
+    size_t selectedIndex{0};
+    size_t selectedField{0};
+    bool viewingDetails{false};
 
     size_t detailsScrollOffset{0};
 
     bool editingValue{false};
+    bool editingByName{false};  // Track if we're in name-based editing mode
     std::string editBuffer;
 
     ScrollbarState detailsScrollbar;
@@ -120,16 +103,13 @@ private:
     int lastMouseY{0};
 
     Generation1Utils::TrainerMemoryAddresses trainer1Addresses{0,0,0,0,0};
-
     Generation2Utils::TrainerMemoryAddresses trainer2Addresses{0,0,0,0,0};
-
     Generation3Utils::TrainerMemoryAddresses trainer3Addresses{Generation3Utils::TRAINER_ADDRESSES_RUBY};
 
     std::vector<std::string> gen1ClassNames;
     std::vector<std::string> gen2ClassNames;
 
     bool isJapanese{false};
-
 
     enum class FieldKind {
         Name,
@@ -155,9 +135,7 @@ private:
 
     std::vector<FieldDescriptor> fields;
 
-    // =====================================================================
-    // Internal helpers
-    // =====================================================================
+    // Helper methods for editing
     bool isGen1Game() const;
     bool isGen2Game() const;
     bool isGen3Game() const;
@@ -179,6 +157,13 @@ private:
     void allocateNewParty(TrainerEntry& entry, uint32_t newPartySize);
     bool writeFile(const std::string& path);
     std::string getOutputPath() const;
+    
+    // Editing helper methods
+    void startEditing(bool byName);
+    void cancelEditing();
+    bool tryLookupByName(const TrainerEntry& tr, const FieldDescriptor& fd, std::string& result);
+    bool applyEdit(TrainerEntry& tr, const FieldDescriptor& fd, const std::string& value);
+    void handleEditInput(SDL_Keycode key);
 
 protected:
     void render() override;

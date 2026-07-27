@@ -123,6 +123,7 @@ private:
     
     // Writing and formatting
     bool writeChecksumsToFile();
+    bool writePokemonChecksumsToFile();
     std::string formatReversedBytes16(uint16_t value);
     
 protected:

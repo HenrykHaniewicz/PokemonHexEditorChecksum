@@ -702,6 +702,10 @@ bool ChecksumCalculator::calculatePokemonChecksum() {
         std::cout << "\nAll Pokemon checksums are valid!" << std::endl;
     }
     
+    if (shouldWrite) {
+        return writePokemonChecksumsToFile();
+    }
+    
     return true;
 }
 
@@ -782,6 +786,103 @@ bool ChecksumCalculator::writeChecksumsToFile() {
     }
     
     return false;
+}
+
+bool ChecksumCalculator::writePokemonChecksumsToFile() {
+    int invalidA = 0, invalidB = 0;
+    for (const auto& r : pokemonResultsSaveA) { if (!r.valid) invalidA++; }
+    for (const auto& r : pokemonResultsSaveB) { if (!r.valid) invalidB++; }
+    
+    if (invalidA == 0 && invalidB == 0) {
+        std::cout << "\nAll Pokemon checksums already valid. No file written." << std::endl;
+        return true;
+    }
+    
+    std::string outputFile;
+    
+    if (shouldOverwrite) {
+        if (!showOverwriteConfirmDialog(HexUtils::getBaseName(fileName))) {
+            std::cout << "\nOverwrite cancelled. Exiting program." << std::endl;
+            return false;
+        }
+        outputFile = fileName;
+    } else {
+        mkdir("edited_files", 0755);
+        
+        std::string baseName = HexUtils::getBaseName(fileName);
+        size_t dotPos = baseName.rfind('.');
+        std::string nameWithoutExt = baseName.substr(0, dotPos);
+        std::string extension = (dotPos != std::string::npos) ? baseName.substr(dotPos) : "";
+        outputFile = "edited_files/" + nameWithoutExt + "_pokemon_checksum" + extension;
+    }
+    
+    std::string outputBuffer = fileBuffer;
+    
+    // Step 1: Write corrected Pokemon checksums into the buffer
+    for (const auto& result : pokemonResultsSaveA) {
+        if (!result.valid) {
+            writeU16LE(outputBuffer, result.location, result.calculated);
+        }
+    }
+    for (const auto& result : pokemonResultsSaveB) {
+        if (!result.valid) {
+            writeU16LE(outputBuffer, result.location, result.calculated);
+        }
+    }
+    
+    std::cout << "\nFixed " << (invalidA + invalidB) << " Pokemon checksum(s) "
+              << "(Save A: " << invalidA << ", Save B: " << invalidB << ")" << std::endl;
+    
+    // Step 2: Recalculate section checksums (the data they cover was modified)
+    std::cout << "Recalculating section checksums..." << std::endl;
+    
+    for (int i = 0; i < 14; i++) {
+        const auto& sec = gen3SaveA.sections[i];
+        uint16_t newChecksum = Generation3Utils::calculateSectionChecksum(
+            outputBuffer, sec.sectionBaseAddress, sec.dataSize);
+        writeU16LE(outputBuffer, sec.checksumLocation, newChecksum);
+        
+        if (newChecksum != sec.calculatedChecksum) {
+            std::cout << "  Save A section " << std::dec << i
+                      << " [ID " << sec.sectionId << "]: 0x"
+                      << HexUtils::toHexString(sec.calculatedChecksum, 4)
+                      << " -> 0x" << HexUtils::toHexString(newChecksum, 4)
+                      << std::endl;
+        }
+    }
+    
+    for (int i = 0; i < 14; i++) {
+        const auto& sec = gen3SaveB.sections[i];
+        uint16_t newChecksum = Generation3Utils::calculateSectionChecksum(
+            outputBuffer, sec.sectionBaseAddress, sec.dataSize);
+        writeU16LE(outputBuffer, sec.checksumLocation, newChecksum);
+        
+        if (newChecksum != sec.calculatedChecksum) {
+            std::cout << "  Save B section " << std::dec << i
+                      << " [ID " << sec.sectionId << "]: 0x"
+                      << HexUtils::toHexString(sec.calculatedChecksum, 4)
+                      << " -> 0x" << HexUtils::toHexString(newChecksum, 4)
+                      << std::endl;
+        }
+    }
+    
+    // Step 3: Write to file
+    std::ofstream outFile(outputFile, std::ios::binary);
+    if (!outFile) {
+        std::cerr << "Failed to create output file: " << outputFile << std::endl;
+        return false;
+    }
+    
+    outFile.write(outputBuffer.c_str(), static_cast<std::streamsize>(fileSize));
+    outFile.close();
+    
+    if (shouldOverwrite) {
+        std::cout << "Checksums written (file overwritten): " << outputFile << std::endl;
+    } else {
+        std::cout << "Checksums written to: " << outputFile << std::endl;
+    }
+    
+    return false;  // Skip GUI, consistent with writeChecksumsToFile()
 }
 
 // ============================================================================
